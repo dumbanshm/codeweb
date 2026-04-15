@@ -14,6 +14,7 @@
         <div class="panel hero">
           <p class="eyebrow">Sample Codebase</p>
           <h1>Dependency Graph Explorer</h1>
+          <p class="builder-tag">by devansh</p>
           <p class="lede">
             Force-directed dependency graph with zoom, pan, drag, and focused neighborhood
             highlighting.
@@ -22,9 +23,6 @@
             <span class="badge">Neo4j-backed</span>
             <span class="badge">Elastic force layout</span>
             <span class="badge">Clickable neighborhoods</span>
-          </div>
-          <div class="button-row single">
-            <button type="button" id="theme-toggle">Enable dark mode</button>
           </div>
         </div>
 
@@ -126,7 +124,6 @@
       const graphTitle = document.getElementById("graphTitle");
       const graphMeta = document.getElementById("graphMeta");
       const graphNode = document.getElementById("graph");
-      const themeToggleButton = document.getElementById("theme-toggle");
 
       const nodeTypeColor = {
         project: "#355c7d",
@@ -151,7 +148,6 @@
       let graphData = { nodes: [], links: [] };
       let neighborsById = new Map();
       let fg;
-      let activeTheme = "light";
 
       function setStatus(message) {
         statusNode.textContent = message;
@@ -170,23 +166,6 @@
 
       function summarizeEdge(edge) {
         return `${edge.type}: ${edge.from ?? edge.source} -> ${edge.to ?? edge.target}`;
-      }
-
-      function applyTheme(theme) {
-        activeTheme = theme;
-        document.documentElement.setAttribute("data-theme", theme);
-        localStorage.setItem("dependency-graph-theme", theme);
-        themeToggleButton.textContent = theme === "dark" ? "Enable light mode" : "Enable dark mode";
-        if (fg) {
-          fg.backgroundColor("rgba(0,0,0,0)");
-          fg.refresh();
-        }
-      }
-
-      function initializeTheme() {
-        const savedTheme = localStorage.getItem("dependency-graph-theme");
-        const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-        applyTheme(savedTheme || (prefersDark ? "dark" : "light"));
       }
 
       function edgeId(edge) {
@@ -496,8 +475,8 @@
 
             const label = summarizeNode(node);
             const fontSize = Math.max(10, 13 / globalScale);
-            const textColor = activeTheme === "dark" ? "rgba(245, 248, 252, 0.92)" : "rgba(22, 38, 56, 0.9)";
-            const bgColor = activeTheme === "dark" ? "rgba(10, 16, 24, 0.65)" : "rgba(255, 255, 255, 0.72)";
+            const textColor = "rgba(22, 38, 56, 0.9)";
+            const bgColor = "rgba(255, 255, 255, 0.72)";
 
             ctx.font = `${fontSize}px IBM Plex Sans`;
             const textWidth = ctx.measureText(label).width;
@@ -629,11 +608,7 @@
         updateGraphRenderer();
       });
       refreshButton.addEventListener("click", rebuildGraph);
-      themeToggleButton.addEventListener("click", () => {
-        applyTheme(activeTheme === "dark" ? "light" : "dark");
-      });
 
-      initializeTheme();
       if (initializeForceGraph()) {
         await loadHealth();
         await loadGraph();

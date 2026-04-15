@@ -16,24 +16,6 @@
   --grid-line: rgba(36, 87, 197, 0.04);
 }
 
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --bg-1: #0f1724;
-  --bg-2: #111a2c;
-  --panel: rgba(19, 30, 45, 0.9);
-  --line: rgba(151, 176, 208, 0.18);
-  --text: #e5edf7;
-  --muted: #9cb0c8;
-  --blue: #7ba9ff;
-  --green: #4ec08e;
-  --panel-border: rgba(151, 176, 208, 0.24);
-  --input-bg: rgba(13, 22, 35, 0.72);
-  --readonly-bg: rgba(16, 27, 42, 0.8);
-  --sidebar-bg: rgba(9, 16, 28, 0.72);
-  --graph-overlay: rgba(7, 12, 20, 0.74);
-  --grid-line: rgba(123, 169, 255, 0.07);
-}
-
 * {
   box-sizing: border-box;
 }
@@ -99,6 +81,14 @@ h1 {
   margin-bottom: 12px;
   font-size: 2.25rem;
   line-height: 0.96;
+}
+
+.builder-tag {
+  margin: 0 0 10px;
+  color: var(--blue);
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
 }
 
 h2 {
@@ -190,11 +180,6 @@ button {
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.62);
   border: 1px solid rgba(16, 32, 48, 0.06);
-}
-
-:root[data-theme="dark"] .stats div {
-  background: rgba(24, 38, 56, 0.76);
-  border: 1px solid rgba(151, 176, 208, 0.12);
 }
 
 .stats span {
