@@ -6,6 +6,7 @@
     <title>Sample Codebase Dependency Graph</title>
     <link rel="stylesheet" href="./styles.css" />
     <script src="https://unpkg.com/force-graph"></script>
+    <script src="https://cdn.jsdelivr.net/npm/force-graph"></script>
   </head>
   <body>
     <div class="shell">
@@ -466,6 +467,12 @@
         refreshVisualState();
       }
 
+      function hasRenderableGraph(graph) {
+        const nodeCount = graph?.nodes?.length || 0;
+        const edgeCount = graph?.edges?.length || 0;
+        return nodeCount > 0 && edgeCount > 0;
+      }
+
       function initializeForceGraph() {
         if (!window.ForceGraph) {
           setStatus("Graph renderer failed to load. Check internet access to unpkg.");
@@ -566,6 +573,12 @@
             throw new Error(graph.message || "Could not load graph.");
           }
 
+          if (!hasRenderableGraph(graph)) {
+            setStatus("Graph is empty. Triggering a rebuild...");
+            await rebuildGraph();
+            return;
+          }
+
           currentGraph = graph;
           setStats(graph.summary || {});
           graphTitle.textContent = graph.rootPath?.split("/").filter(Boolean).at(-1) || "Bundled sample codebase";
@@ -591,6 +604,11 @@
           const graph = await response.json();
           if (!response.ok) {
             setStatus(graph.message || "Graph rebuild failed.");
+            return;
+          }
+
+          if (!hasRenderableGraph(graph)) {
+            setStatus("Rebuild completed but graph is still empty. Verify TARGET_CODEBASE and repo contents.");
             return;
           }
 

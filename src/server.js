@@ -30,6 +30,7 @@ const PREVIEW_LINE_WINDOW = 40;
 
 async function getDefaultGraph() {
   const defaultRoot = process.env.TARGET_CODEBASE || sampleCodebasePath;
+  await fs.access(defaultRoot);
 
   if (lastGraph.nodes.length > 0 && lastGraph.rootPath === defaultRoot) {
     return lastGraph;
