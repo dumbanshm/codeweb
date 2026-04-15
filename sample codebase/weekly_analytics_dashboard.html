@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weekly Analytics Dashboard - Inventory & Waste</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .header {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .card {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .metric-card {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            margin: 5px 0;
+        }
+        .metric-label {
+            font-size: 14px;
+            color: #666;
+        }
+        .warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+        }
+        .danger {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+        }
+        h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        .fetch-button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .fetch-button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Weekly Analytics Dashboard</h1>
+        <p>Inventory Management & Waste Tracking</p>
+        <div style="margin: 20px 0;">
+            <label style="margin-right: 10px;">Metric Type:</label>
+            <select id="metricType" onchange="fetchAllData()" style="padding: 5px 10px; font-size: 16px;">
+                <option value="qty">Quantity (Units)</option>
+                <option value="cost">Cost (₹)</option>
+            </select>
+        </div>
+        <button class="fetch-button" onclick="fetchAllData()">Refresh Data</button>
+    </div>
+
+    <div class="dashboard-grid">
+        <!-- Key Metrics -->
+        <div class="card full-width">
+            <h2>Key Performance Indicators</h2>
+            <div class="metrics-grid" id="kpiMetrics">
+                <!-- KPIs will be populated here -->
+            </div>
+        </div>
+
+        <!-- Inventory Trend Chart -->
+        <div class="card">
+            <h2>Weekly Inventory Levels</h2>
+            <div class="chart-container">
+                <canvas id="inventoryChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Expired Products Chart -->
+        <div class="card">
+            <h2>Weekly Expired Products</h2>
+            <div class="chart-container">
+                <canvas id="expiredChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Combined Analysis Chart -->
+        <div class="card full-width">
+            <h2>Waste Rate Analysis</h2>
+            <div class="chart-container">
+                <canvas id="wasteRateChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Category Breakdown -->
+        <div class="card">
+            <h2>Expired Products by Category</h2>
+            <div class="chart-container">
+                <canvas id="categoryChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Financial Impact -->
+        <div class="card">
+            <h2>Financial Impact Summary</h2>
+            <div class="metrics-grid" id="financialMetrics">
+                <!-- Financial metrics will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let inventoryData = null;
+        let expiredData = null;
+        let charts = {};
+
+        async function fetchAllData() {
+            try {
+                const metricType = document.getElementById('metricType').value;
+                
+                // Fetch both endpoints in parallel with metric type
+                const [inventoryResponse, expiredResponse] = await Promise.all([
+                    fetch(`http://localhost:8000/weekly_inventory?weeks_back=6&metric_type=${metricType}`),
+                    fetch(`http://localhost:8000/weekly_expired?weeks_back=6&metric_type=${metricType}`)
+                ]);
+
+                inventoryData = await inventoryResponse.json();
+                expiredData = await expiredResponse.json();
+
+                // Update all visualizations
+                updateKPIs();
+                updateInventoryChart();
+                updateExpiredChart();
+                updateWasteRateChart();
+                updateCategoryChart();
+                updateFinancialMetrics();
+
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                alert('Error fetching data. Make sure the API is running.');
+            }
+        }
+
+        function updateKPIs() {
+            const kpiContainer = document.getElementById('kpiMetrics');
+            
+            // Calculate waste rate
+            const totalExpired = expiredData.summary.total_expired_past_n_weeks;
+            const avgInventory = inventoryData.weeks.reduce((sum, w) => sum + w.total_inventory_qty, 0) / inventoryData.weeks.length;
+            const wasteRate = (totalExpired / avgInventory * 100).toFixed(2);
+            
+            // Determine waste trend
+            const recentExpired = expiredData.weeks.slice(0, 3).reduce((sum, w) => sum + w.expired_count, 0);
+            const olderExpired = expiredData.weeks.slice(3, 6).reduce((sum, w) => sum + w.expired_count, 0);
+            const trend = recentExpired > olderExpired ? 'increasing' : 'decreasing';
+            
+            const unitLabel = inventoryData.summary.unit_label;
+            const isQty = inventoryData.metric_type === 'qty';
+            
+            kpiContainer.innerHTML = `
+                <div class="metric-card ${wasteRate < 5 ? 'success' : wasteRate < 10 ? 'warning' : 'danger'}">
+                    <div class="metric-label">Waste Rate</div>
+                    <div class="metric-value">${wasteRate}%</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Current Inventory</div>
+                    <div class="metric-value">${isQty ? inventoryData.summary.current_total_inventory.toLocaleString() : '₹' + inventoryData.summary.current_total_inventory.toLocaleString()}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Weekly ${isQty ? 'Sales' : 'Sales Value'} Avg</div>
+                    <div class="metric-value">${isQty ? Math.round(inventoryData.summary.average_weekly_sales).toLocaleString() : '₹' + inventoryData.summary.average_weekly_sales.toLocaleString()}</div>
+                </div>
+                <div class="metric-card ${trend === 'decreasing' ? 'success' : 'danger'}">
+                    <div class="metric-label">Waste Trend</div>
+                    <div class="metric-value">${trend === 'decreasing' ? '↓' : '↑'} ${trend}</div>
+                </div>
+            `;
+        }
+
+        function updateInventoryChart() {
+            const ctx = document.getElementById('inventoryChart').getContext('2d');
+            
+            if (charts.inventory) charts.inventory.destroy();
+            
+            charts.inventory = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: inventoryData.weeks.map(w => `Week ${w.week_number}`).reverse(),
+                    datasets: [
+                        {
+                            label: 'Total Inventory',
+                            data: inventoryData.weeks.map(w => w.total_inventory_qty).reverse(),
+                            borderColor: 'rgb(54, 162, 235)',
+                            backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Sold Quantity',
+                            data: inventoryData.weeks.map(w => w.sold_inventory_qty).reverse(),
+                            borderColor: 'rgb(75, 192, 192)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                            tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            title: {
+                                display: true,
+                                text: inventoryData.metric_type === 'qty' ? 'Quantity (units)' : 'Value (₹)'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return inventoryData.metric_type === 'qty' ? 
+                                        value.toLocaleString() : 
+                                        '₹' + value.toLocaleString();
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { position: 'top' }
+                    }
+                }
+            });
+        }
+
+        function updateExpiredChart() {
+            const ctx = document.getElementById('expiredChart').getContext('2d');
+            
+            if (charts.expired) charts.expired.destroy();
+            
+            charts.expired = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: expiredData.weeks.map(w => `Week ${w.week_number}`).reverse(),
+                    datasets: [{
+                        label: 'Expired Products',
+                        data: expiredData.weeks.map(w => w.expired_count).reverse(),
+                        backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                        borderColor: 'rgb(255, 99, 132)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+
+        function updateWasteRateChart() {
+            const ctx = document.getElementById('wasteRateChart').getContext('2d');
+            
+            if (charts.wasteRate) charts.wasteRate.destroy();
+            
+            // Calculate waste rate for each week
+            const wasteRates = [];
+            for (let i = 0; i < inventoryData.weeks.length; i++) {
+                const inventory = inventoryData.weeks[i].total_inventory_qty;
+                const expired = expiredData.weeks[i].expired_count;
+                const rate = inventory > 0 ? (expired / inventory * 100) : 0;
+                wasteRates.push(rate.toFixed(2));
+            }
+            
+            charts.wasteRate = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: inventoryData.weeks.map(w => `Week ${w.week_number}`).reverse(),
+                    datasets: [{
+                        label: 'Waste Rate %',
+                        data: wasteRates.reverse(),
+                        borderColor: 'rgb(255, 159, 64)',
+                        backgroundColor: 'rgba(255, 159, 64, 0.1)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Waste Rate (%)'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return value + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateCategoryChart() {
+            const ctx = document.getElementById('categoryChart').getContext('2d');
+            
+            if (charts.category) charts.category.destroy();
+            
+            const categories = Object.keys(expiredData.summary.category_totals);
+            const values = Object.values(expiredData.summary.category_totals);
+            
+            charts.category = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: categories,
+                    datasets: [{
+                        data: values,
+                        backgroundColor: [
+                            'rgba(255, 99, 132, 0.5)',
+                            'rgba(54, 162, 235, 0.5)',
+                            'rgba(255, 205, 86, 0.5)',
+                            'rgba(75, 192, 192, 0.5)',
+                            'rgba(153, 102, 255, 0.5)'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'right' }
+                    }
+                }
+            });
+        }
+
+        function updateFinancialMetrics() {
+            const container = document.getElementById('financialMetrics');
+            
+            const avgExpiredValue = expiredData.summary.average_weekly_expired_value;
+            const yearlyProjection = avgExpiredValue * 52;
+            
+            container.innerHTML = `
+                <div class="metric-card">
+                    <div class="metric-label">Weekly Loss</div>
+                    <div class="metric-value">₹${avgExpiredValue.toLocaleString()}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">6-Week Total</div>
+                    <div class="metric-value">₹${expiredData.summary.total_expired_value.toLocaleString()}</div>
+                </div>
+                <div class="metric-card danger">
+                    <div class="metric-label">Yearly Projection</div>
+                    <div class="metric-value">₹${Math.round(yearlyProjection).toLocaleString()}</div>
+                </div>
+            `;
+        }
+
+        // Fetch data on page load
+        window.onload = () => {
+            fetchAllData();
+        };
+    </script>
+</body>
+</html> 

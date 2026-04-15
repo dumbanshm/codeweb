@@ -1,0 +1,16 @@
+IndexError                                Traceback (most recent call last)
+/tmp/ipython-input-20-2384749575.py in <cell line: 0>()
+     50 # 5. Impact Simulation
+     51 ax5 = axes[1, 1]
+---> 52 impact = integrated_system.simulate_impact()
+     53 if 'error' not in impact:
+     54     impact_data = pd.Series({
+2 frames
+/tmp/ipython-input-18-1708849879.py in get_hybrid_recommendations(self, user_id, n_recommendations, content_weight, collaborative_weight, focus_on_expiring)
+    144                 ].index[0]
+    145 
+--> 146                 sim_scores = self.content_similarity_matrix[product_idx]
+    147                 for idx, score in enumerate(sim_scores):
+    148                     product_id = self.products_df.iloc[idx]['product_id']
+
+IndexError: index 280 is out of bounds for axis 0 with size 278

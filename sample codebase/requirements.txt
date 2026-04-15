@@ -1,0 +1,28 @@
+# Core data processing libraries
+pandas
+numpy
+
+# Machine learning libraries
+scikit-learn
+scipy
+
+# Optional: For better performance and additional functionality
+jupyter
+ipykernel
+matplotlib
+seaborn
+
+# For warnings and type hints (usually pre-installed but good to specify)
+python-dateutil
+
+# FastAPI and server
+fastapi
+uvicorn
+python-multipart
+
+# Database
+supabase
+python-dotenv
+
+#faker
+faker

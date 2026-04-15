@@ -1,0 +1,16 @@
+{
+  "name": "codebase-dependency-graph",
+  "version": "0.1.0",
+  "description": "Prototype Neo4j-backed dependency graph explorer for small codebases.",
+  "type": "module",
+  "scripts": {
+    "dev": "node src/server.js",
+    "dev:watch": "node --watch-path=src src/server.js",
+    "start": "node src/server.js",
+    "check": "node --check src/server.js && node --check src/analyzer.js && node --check src/neo4j.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "neo4j-driver": "^5.28.1"
+  }
+}

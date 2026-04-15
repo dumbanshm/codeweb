@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sample Codebase Dependency Graph</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://unpkg.com/force-graph"></script>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="panel hero">
+          <p class="eyebrow">Sample Codebase</p>
+          <h1>Dependency Graph Explorer</h1>
+          <p class="lede">
+            Force-directed dependency graph with zoom, pan, drag, and focused neighborhood
+            highlighting.
+          </p>
+          <div class="hero-badges">
+            <span class="badge">Neo4j-backed</span>
+            <span class="badge">Elastic force layout</span>
+            <span class="badge">Clickable neighborhoods</span>
+          </div>
+          <div class="button-row single">
+            <button type="button" id="theme-toggle">Enable dark mode</button>
+          </div>
+        </div>
+
+        <div class="panel form-panel">
+          <label for="rootPath">Analyzed codebase</label>
+          <input id="rootPath" type="text" readonly />
+          <div class="button-row single">
+            <button type="button" id="refresh-button">Rebuild graph</button>
+          </div>
+          <p id="status" class="status">Loading codebase graph...</p>
+        </div>
+
+        <div class="panel stats">
+          <div>
+            <span>Files</span>
+            <strong id="fileCount">0</strong>
+          </div>
+          <div>
+            <span>Entities</span>
+            <strong id="entityCount">0</strong>
+          </div>
+          <div>
+            <span>Modules</span>
+            <strong id="moduleCount">0</strong>
+          </div>
+          <div>
+            <span>Edges</span>
+            <strong id="edgeCount">0</strong>
+          </div>
+        </div>
+
+        <div class="panel controls">
+          <h2>Explore</h2>
+          <label for="searchInput">Search nodes</label>
+          <input id="searchInput" type="text" placeholder="main.py, get_users, pandas..." />
+
+          <label for="edgeFilter">Visible relations</label>
+          <select id="edgeFilter">
+            <option value="all">All relations</option>
+            <option value="dependency">Only CALLS and IMPORTS</option>
+            <option value="structure">Only CONTAINS</option>
+          </select>
+
+          <label for="densityRange">Max dependency edges</label>
+          <input id="densityRange" type="range" min="20" max="520" step="10" value="220" />
+          <p id="densityValue" class="hint">Showing up to 220 dependency edges.</p>
+          <p class="hint">
+            Click node: highlight direct neighbors. Drag to reposition. Scroll to zoom.
+          </p>
+        </div>
+
+        <div class="panel legend">
+          <h2>Legend</h2>
+          <ul>
+            <li><span class="swatch project"></span> Project</li>
+            <li><span class="swatch file"></span> File</li>
+            <li><span class="swatch function"></span> Function / method</li>
+            <li><span class="swatch class"></span> Class</li>
+            <li><span class="swatch module"></span> External module</li>
+            <li><span class="line contains"></span> `CONTAINS`</li>
+            <li><span class="line calls"></span> `CALLS`</li>
+            <li><span class="line imports"></span> `IMPORTS`</li>
+          </ul>
+        </div>
+
+        <div class="panel details">
+          <h2>Selection</h2>
+          <pre id="selection">Click a node or edge to inspect it.</pre>
+        </div>
+      </aside>
+
+      <main class="canvas-wrap">
+        <div class="canvas-header">
+          <div>
+            <p class="eyebrow">Graph View</p>
+            <h2 id="graphTitle">Bundled sample codebase</h2>
+          </div>
+          <p id="graphMeta" class="graph-meta">Preparing graph...</p>
+        </div>
+        <div class="canvas-scroll">
+          <div id="graph"></div>
+        </div>
+      </main>
+    </div>
+
+    <script type="module">
+      const rootPathInput = document.getElementById("rootPath");
+      const refreshButton = document.getElementById("refresh-button");
+      const statusNode = document.getElementById("status");
+      const fileCountNode = document.getElementById("fileCount");
+      const entityCountNode = document.getElementById("entityCount");
+      const moduleCountNode = document.getElementById("moduleCount");
+      const edgeCountNode = document.getElementById("edgeCount");
+      const searchInput = document.getElementById("searchInput");
+      const edgeFilter = document.getElementById("edgeFilter");
+      const densityRange = document.getElementById("densityRange");
+      const densityValue = document.getElementById("densityValue");
+      const selectionNode = document.getElementById("selection");
+      const graphTitle = document.getElementById("graphTitle");
+      const graphMeta = document.getElementById("graphMeta");
+      const graphNode = document.getElementById("graph");
+      const themeToggleButton = document.getElementById("theme-toggle");
+
+      const nodeTypeColor = {
+        project: "#355c7d",
+        file: "#f4b860",
+        class: "#ef8f83",
+        module: "#8ecae6",
+        function: "#8ec5a0",
+        method: "#8ec5a0"
+      };
+      const edgeTypeColor = {
+        CONTAINS: "#4aa56c",
+        CALLS: "#2563eb",
+        IMPORTS: "#d64550"
+      };
+
+      let currentGraph = null;
+      let defaultRoot = "";
+      let selectedNodeId = null;
+      let selectedLinkId = null;
+      let highlightedNodeIds = new Set();
+      let highlightedLinkIds = new Set();
+      let graphData = { nodes: [], links: [] };
+      let neighborsById = new Map();
+      let fg;
+      let activeTheme = "light";
+
+      function setStatus(message) {
+        statusNode.textContent = message;
+      }
+
+      function setStats(summary = {}) {
+        fileCountNode.textContent = summary.fileCount ?? 0;
+        entityCountNode.textContent = summary.entityCount ?? 0;
+        moduleCountNode.textContent = summary.moduleCount ?? 0;
+        edgeCountNode.textContent = summary.edgeCount ?? 0;
+      }
+
+      function summarizeNode(node) {
+        return node.qualifiedName || node.name || node.label || node.path || node.id;
+      }
+
+      function summarizeEdge(edge) {
+        return `${edge.type}: ${edge.from ?? edge.source} -> ${edge.to ?? edge.target}`;
+      }
+
+      function applyTheme(theme) {
+        activeTheme = theme;
+        document.documentElement.setAttribute("data-theme", theme);
+        localStorage.setItem("dependency-graph-theme", theme);
+        themeToggleButton.textContent = theme === "dark" ? "Enable light mode" : "Enable dark mode";
+        if (fg) {
+          fg.backgroundColor("rgba(0,0,0,0)");
+          fg.refresh();
+        }
+      }
+
+      function initializeTheme() {
+        const savedTheme = localStorage.getItem("dependency-graph-theme");
+        const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        applyTheme(savedTheme || (prefersDark ? "dark" : "light"));
+      }
+
+      function edgeId(edge) {
+        return edge.id || `${edge.source}->${edge.target}:${edge.type ?? "EDGE"}`;
+      }
+
+      function getFilteredGraph(graph) {
+        const query = searchInput.value.trim().toLowerCase();
+        const dependencyLimit = Number(densityRange.value);
+        const containsEdges = [];
+        const dependencyEdges = [];
+
+        for (const edge of graph.edges || []) {
+          if (edge.type === "CONTAINS") {
+            containsEdges.push(edge);
+          } else {
+            dependencyEdges.push(edge);
+          }
+        }
+
+        dependencyEdges.sort((left, right) => {
+          const leftWeight = left.type === "CALLS" ? 0 : 1;
+          const rightWeight = right.type === "CALLS" ? 0 : 1;
+          return leftWeight - rightWeight || left.id.localeCompare(right.id);
+        });
+
+        let visibleEdges;
+        if (edgeFilter.value === "dependency") {
+          visibleEdges = dependencyEdges.slice(0, dependencyLimit);
+        } else if (edgeFilter.value === "structure") {
+          visibleEdges = containsEdges;
+        } else {
+          visibleEdges = [...containsEdges, ...dependencyEdges.slice(0, dependencyLimit)];
+        }
+
+        let visibleNodeIds = new Set();
+        for (const edge of visibleEdges) {
+          visibleNodeIds.add(edge.from);
+          visibleNodeIds.add(edge.to);
+        }
+
+        if (visibleNodeIds.size === 0) {
+          visibleNodeIds = new Set((graph.nodes || []).map((node) => node.id));
+        }
+
+        if (query) {
+          const matchedNodeIds = new Set(
+            (graph.nodes || [])
+              .filter((node) =>
+                [node.id, node.path, node.name, node.label, node.qualifiedName]
+                  .filter(Boolean)
+                  .some((value) => String(value).toLowerCase().includes(query))
+              )
+              .map((node) => node.id)
+          );
+
+          const expandedNodeIds = new Set(matchedNodeIds);
+          for (const edge of visibleEdges) {
+            if (matchedNodeIds.has(edge.from) || matchedNodeIds.has(edge.to)) {
+              expandedNodeIds.add(edge.from);
+              expandedNodeIds.add(edge.to);
+            }
+          }
+
+          visibleNodeIds = new Set([...visibleNodeIds].filter((id) => expandedNodeIds.has(id)));
+          visibleEdges = visibleEdges.filter((edge) => visibleNodeIds.has(edge.from) && visibleNodeIds.has(edge.to));
+        }
+
+        return {
+          nodes: (graph.nodes || []).filter((node) => visibleNodeIds.has(node.id)),
+          edges: visibleEdges
+        };
+      }
+
+      function buildNeighbors(links) {
+        const neighbors = new Map();
+        for (const link of links) {
+          const sourceId = typeof link.source === "object" ? link.source.id : link.source;
+          const targetId = typeof link.target === "object" ? link.target.id : link.target;
+
+          if (!neighbors.has(sourceId)) {
+            neighbors.set(sourceId, new Set());
+          }
+          if (!neighbors.has(targetId)) {
+            neighbors.set(targetId, new Set());
+          }
+
+          neighbors.get(sourceId).add(targetId);
+          neighbors.get(targetId).add(sourceId);
+        }
+        return neighbors;
+      }
+
+      function clearHighlights() {
+        selectedNodeId = null;
+        selectedLinkId = null;
+        highlightedNodeIds = new Set();
+        highlightedLinkIds = new Set();
+      }
+
+      function applyNodeHighlight(nodeId) {
+        selectedNodeId = nodeId;
+        selectedLinkId = null;
+        highlightedNodeIds = new Set([nodeId]);
+        highlightedLinkIds = new Set();
+
+        for (const neighborId of neighborsById.get(nodeId) || []) {
+          highlightedNodeIds.add(neighborId);
+        }
+
+        for (const link of graphData.links) {
+          const sourceId = typeof link.source === "object" ? link.source.id : link.source;
+          const targetId = typeof link.target === "object" ? link.target.id : link.target;
+          if (sourceId === nodeId || targetId === nodeId) {
+            highlightedLinkIds.add(edgeId(link));
+          }
+        }
+      }
+
+      function baseNodeColor(node) {
+        return nodeTypeColor[node.type] || "#8ec5a0";
+      }
+
+      function fadedNodeColor() {
+        return "rgba(173, 184, 194, 0.18)";
+      }
+
+      function linkColor(link) {
+        if (selectedLinkId && edgeId(link) === selectedLinkId) {
+          return "#111827";
+        }
+        if (highlightedLinkIds.size > 0) {
+          return highlightedLinkIds.has(edgeId(link)) ? (edgeTypeColor[link.type] || "#64748b") : "rgba(149, 163, 175, 0.13)";
+        }
+        return edgeTypeColor[link.type] || "#64748b";
+      }
+
+      function nodeColor(node) {
+        if (selectedNodeId && node.id === selectedNodeId) {
+          return "#111827";
+        }
+        if (highlightedNodeIds.size > 0 && !highlightedNodeIds.has(node.id)) {
+          return fadedNodeColor();
+        }
+        return baseNodeColor(node);
+      }
+
+      function nodeSize(node) {
+        if (node.type === "project") {
+          return 14;
+        }
+        if (node.type === "file") {
+          return 9;
+        }
+        if (node.type === "class") {
+          return 7;
+        }
+        if (node.type === "module") {
+          return 6;
+        }
+        return 5;
+      }
+
+      function refreshVisualState() {
+        fg
+          .nodeColor(nodeColor)
+          .nodeVal(nodeSize)
+          .linkColor(linkColor)
+          .linkWidth((link) => {
+            if (selectedLinkId && edgeId(link) === selectedLinkId) {
+              return 3.6;
+            }
+            if (highlightedLinkIds.size > 0) {
+              return highlightedLinkIds.has(edgeId(link)) ? 2.6 : 0.5;
+            }
+            return link.type === "CONTAINS" ? 0.7 : 1.4;
+          })
+          .linkDirectionalParticles((link) => {
+            if (selectedLinkId && edgeId(link) === selectedLinkId) {
+              return 4;
+            }
+            return highlightedLinkIds.has(edgeId(link)) ? 2 : 0;
+          })
+          .linkDirectionalParticleWidth((link) => (highlightedLinkIds.has(edgeId(link)) ? 2.2 : 0));
+
+        fg.refresh();
+      }
+
+      function setSelectionInfo(value) {
+        selectionNode.textContent = JSON.stringify(value, null, 2);
+      }
+
+      async function loadNodeDetails(node) {
+        try {
+          const response = await fetch(`/api/node-details?id=${encodeURIComponent(node.id)}`);
+          const details = await response.json();
+
+          if (!response.ok) {
+            setSelectionInfo({
+              kind: "node",
+              summary: summarizeNode(node),
+              error: details.message || details.error || "Could not load node details."
+            });
+            return;
+          }
+
+          const payload = {
+            kind: "node",
+            id: details.id,
+            type: details.type,
+            name: details.name,
+            filePath: details.filePath,
+            absoluteFilePath: details.absoluteFilePath || null,
+            line: details.line,
+            endLine: details.endLine,
+            snippetMode: details.snippetMode
+          };
+
+          if (details.previewReason) {
+            payload.previewReason = details.previewReason;
+          }
+
+          if (details.snippet) {
+            payload.snippetRange = `L${details.snippetStartLine}-L${details.snippetEndLine}`;
+            payload.snippet = details.snippet;
+          } else {
+            payload.snippet = "No snippet available for this node type.";
+          }
+
+          setSelectionInfo(payload);
+        } catch {
+          setSelectionInfo({
+            kind: "node",
+            id: node.id,
+            summary: summarizeNode(node),
+            error: "Could not load node details."
+          });
+        }
+      }
+
+      function centerNode(node) {
+        if (!node) {
+          return;
+        }
+        fg.centerAt(node.x, node.y, 300);
+        fg.zoom(2.2, 300);
+      }
+
+      function updateGraphRenderer() {
+        if (!currentGraph || !fg) {
+          return;
+        }
+
+        const filtered = getFilteredGraph(currentGraph);
+        graphData = {
+          nodes: filtered.nodes.map((node) => ({ ...node })),
+          links: filtered.edges.map((edge) => ({
+            ...edge,
+            source: edge.from,
+            target: edge.to
+          }))
+        };
+
+        const nodeIds = new Set(graphData.nodes.map((node) => node.id));
+        if (selectedNodeId && !nodeIds.has(selectedNodeId)) {
+          clearHighlights();
+        }
+
+        neighborsById = buildNeighbors(graphData.links);
+        fg.graphData(graphData);
+
+        if (selectedNodeId && nodeIds.has(selectedNodeId)) {
+          applyNodeHighlight(selectedNodeId);
+        } else {
+          clearHighlights();
+        }
+
+        refreshVisualState();
+      }
+
+      function initializeForceGraph() {
+        if (!window.ForceGraph) {
+          setStatus("Graph renderer failed to load. Check internet access to unpkg.");
+          return false;
+        }
+
+        fg = window
+          .ForceGraph()(graphNode)
+          .backgroundColor("rgba(255,255,255,0)")
+          .nodeRelSize(5)
+          .d3AlphaDecay(0.03)
+          .d3VelocityDecay(0.28)
+          .cooldownTicks(140)
+          .linkDirectionalArrowLength(3)
+          .linkDirectionalArrowRelPos(1)
+          .nodeCanvasObjectMode(() => "after")
+          .nodeCanvasObject((node, ctx, globalScale) => {
+            if (globalScale < 2.1) {
+              return;
+            }
+
+            const label = summarizeNode(node);
+            const fontSize = Math.max(10, 13 / globalScale);
+            const textColor = activeTheme === "dark" ? "rgba(245, 248, 252, 0.92)" : "rgba(22, 38, 56, 0.9)";
+            const bgColor = activeTheme === "dark" ? "rgba(10, 16, 24, 0.65)" : "rgba(255, 255, 255, 0.72)";
+
+            ctx.font = `${fontSize}px IBM Plex Sans`;
+            const textWidth = ctx.measureText(label).width;
+            const padding = fontSize * 0.4;
+
+            ctx.fillStyle = bgColor;
+            ctx.fillRect(
+              node.x - textWidth / 2 - padding,
+              node.y + (nodeSize(node) * 1.4),
+              textWidth + padding * 2,
+              fontSize + padding
+            );
+
+            ctx.fillStyle = textColor;
+            ctx.fillText(label, node.x - textWidth / 2, node.y + nodeSize(node) * 1.4 + fontSize * 0.95);
+          })
+          .nodeLabel((node) => {
+            const label = summarizeNode(node);
+            return `<strong>${label}</strong><br/>Type: ${node.type}<br/>File: ${node.filePath || node.path || "-"}`;
+          })
+          .linkLabel((link) => summarizeEdge(link))
+          .onNodeClick((node) => {
+            applyNodeHighlight(node.id);
+            refreshVisualState();
+            loadNodeDetails(node);
+            centerNode(node);
+          })
+          .onLinkClick((link) => {
+            selectedLinkId = edgeId(link);
+            selectedNodeId = null;
+            highlightedNodeIds = new Set();
+            highlightedLinkIds = new Set([selectedLinkId]);
+            refreshVisualState();
+            setSelectionInfo({
+              kind: "edge",
+              ...link,
+              summary: summarizeEdge(link)
+            });
+          })
+          .onBackgroundClick(() => {
+            clearHighlights();
+            refreshVisualState();
+            selectionNode.textContent = "Click a node or edge to inspect it.";
+          });
+
+        const resizeObserver = new ResizeObserver((entries) => {
+          for (const entry of entries) {
+            const width = Math.max(400, Math.floor(entry.contentRect.width));
+            const height = Math.max(520, Math.floor(entry.contentRect.height));
+            fg.width(width).height(height);
+          }
+        });
+        resizeObserver.observe(graphNode);
+        return true;
+      }
+
+      async function loadHealth() {
+        try {
+          const response = await fetch("/api/health");
+          const health = await response.json();
+          defaultRoot = health.defaultRoot || "";
+          rootPathInput.value = defaultRoot;
+        } catch {
+          setStatus("Could not load health status.");
+        }
+      }
+
+      async function loadGraph() {
+        try {
+          const response = await fetch("/api/graph");
+          const graph = await response.json();
+          if (!response.ok) {
+            throw new Error(graph.message || "Could not load graph.");
+          }
+
+          currentGraph = graph;
+          setStats(graph.summary || {});
+          graphTitle.textContent = graph.rootPath?.split("/").filter(Boolean).at(-1) || "Bundled sample codebase";
+          graphMeta.textContent = graph.generatedAt
+            ? `Generated ${new Date(graph.generatedAt).toLocaleString()}`
+            : `Loaded from ${graph.source || "memory"}`;
+          setStatus(`Loaded ${graph.source || "memory"} graph.`);
+          updateGraphRenderer();
+        } catch {
+          await rebuildGraph();
+        }
+      }
+
+      async function rebuildGraph() {
+        setStatus("Rebuilding graph from sample codebase...");
+        try {
+          const response = await fetch("/api/analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rootPath: defaultRoot })
+          });
+
+          const graph = await response.json();
+          if (!response.ok) {
+            setStatus(graph.message || "Graph rebuild failed.");
+            return;
+          }
+
+          currentGraph = graph;
+          setStats(graph.summary || {});
+          graphMeta.textContent = `Generated ${new Date(graph.generatedAt).toLocaleString()}`;
+          setStatus("Graph rebuilt.");
+          updateGraphRenderer();
+        } catch {
+          setStatus("Could not rebuild graph. Check server and Neo4j connection.");
+        }
+      }
+
+      searchInput.addEventListener("input", updateGraphRenderer);
+      edgeFilter.addEventListener("change", updateGraphRenderer);
+      densityRange.addEventListener("input", () => {
+        densityValue.textContent = `Showing up to ${densityRange.value} dependency edges.`;
+        updateGraphRenderer();
+      });
+      refreshButton.addEventListener("click", rebuildGraph);
+      themeToggleButton.addEventListener("click", () => {
+        applyTheme(activeTheme === "dark" ? "light" : "dark");
+      });
+
+      initializeTheme();
+      if (initializeForceGraph()) {
+        await loadHealth();
+        await loadGraph();
+      }
+    </script>
+  </body>
+</html>
