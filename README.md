@@ -46,18 +46,6 @@ npm run dev
 
 This repo now includes [render.yaml](/Users/devansh/Everything/Academics/DevDaddy/codeweb/render.yaml), so Render can auto-detect service settings.
 
-### Your side checklist
-
-1. Create a Neo4j AuraDB instance and copy connection values (`URI`, `username`, `password`).
-2. Push this repo to GitHub.
-3. In Render, create a **Blueprint** deployment from this repo (it reads `render.yaml`).
-4. In Render service environment, set:
-   - `NEO4J_URI`
-   - `NEO4J_USERNAME`
-   - `NEO4J_PASSWORD`
-5. Deploy and open `https://<your-render-domain>/api/health` to verify service is up.
-6. Open app URL and click **Rebuild graph** once to populate data.
-
 ### Notes
 
 - `render.yaml` already sets `NODE_ENV=production`, start command, and health check path.
@@ -73,3 +61,6 @@ You can also deploy this same Node app to Railway with start command `npm start`
 - `GET /api/graph`
 - `GET /api/health`
 - `GET /api/node-details?id=<nodeId>`
+
+## !!!check it out in action!!!
+- https://codeweb-8z86.onrender.com/
