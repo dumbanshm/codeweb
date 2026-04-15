@@ -49,6 +49,12 @@ function resolveCodebasePath(rawPath) {
   return path.resolve(projectRoot, sanitized);
 }
 
+function hasGraphData(graph) {
+  const nodeCount = graph?.nodes?.length || 0;
+  const edgeCount = graph?.edges?.length || 0;
+  return nodeCount > 0 && edgeCount > 0;
+}
+
 async function getDefaultGraph() {
   const defaultRoot = resolveCodebasePath(process.env.TARGET_CODEBASE);
   await fs.access(defaultRoot);
@@ -167,7 +173,7 @@ app.post("/api/analyze", async (req, res) => {
 app.get("/api/graph", async (_req, res) => {
   try {
     const storedGraph = await readGraph();
-    if (storedGraph) {
+    if (storedGraph && hasGraphData(storedGraph)) {
       res.json({
         source: "neo4j",
         ...storedGraph
@@ -175,7 +181,7 @@ app.get("/api/graph", async (_req, res) => {
       return;
     }
 
-    if (lastGraph.nodes.length === 0) {
+    if (lastGraph.nodes.length === 0 || !hasGraphData(lastGraph)) {
       const graph = await getDefaultGraph();
       res.json({
         source: "generated",
