@@ -91,6 +91,26 @@ h1 {
   letter-spacing: 0.02em;
 }
 
+.github-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(36, 87, 197, 0.28);
+  background: rgba(36, 87, 197, 0.1);
+  color: #173f92;
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.github-btn:hover {
+  background: rgba(36, 87, 197, 0.16);
+}
+
 h2 {
   margin-bottom: 12px;
   font-size: 1.08rem;
