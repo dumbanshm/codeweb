@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeCodebase } from "./analyzer.js";
-import { closeNeo4j, isNeo4jConfigured, loadEnvFromFile, readGraph, writeGraph } from "./neo4j.js";
+import { checkNeo4jConnection, closeNeo4j, isNeo4jConfigured, loadEnvFromFile, readGraph, writeGraph } from "./neo4j.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,12 +24,33 @@ let lastGraph = {
   nodes: [],
   edges: []
 };
+let startupError = null;
+let lastPersistence = null;
 
 const MAX_SNIPPET_CHARS = 4500;
 const PREVIEW_LINE_WINDOW = 40;
 
+function sanitizeEnvPath(value) {
+  if (!value) {
+    return "";
+  }
+  const trimmed = value.trim();
+  return trimmed.replace(/^['"]|['"]$/g, "");
+}
+
+function resolveCodebasePath(rawPath) {
+  const sanitized = sanitizeEnvPath(rawPath);
+  if (!sanitized) {
+    return sampleCodebasePath;
+  }
+  if (path.isAbsolute(sanitized)) {
+    return sanitized;
+  }
+  return path.resolve(projectRoot, sanitized);
+}
+
 async function getDefaultGraph() {
-  const defaultRoot = process.env.TARGET_CODEBASE || sampleCodebasePath;
+  const defaultRoot = resolveCodebasePath(process.env.TARGET_CODEBASE);
   await fs.access(defaultRoot);
 
   if (lastGraph.nodes.length > 0 && lastGraph.rootPath === defaultRoot) {
@@ -37,8 +58,9 @@ async function getDefaultGraph() {
   }
 
   const graph = await analyzeCodebase(defaultRoot);
-  await writeGraph(graph);
+  lastPersistence = await writeGraph(graph);
   lastGraph = graph;
+  startupError = null;
   return graph;
 }
 
@@ -91,31 +113,53 @@ function buildSnippet(content, line, endLine) {
 app.use(express.json());
 app.use(express.static(path.join(projectRoot, "public")));
 
-app.get("/api/health", (_req, res) => {
+app.get("/api/health", async (_req, res) => {
+  const resolvedDefaultRoot = resolveCodebasePath(process.env.TARGET_CODEBASE);
+  let defaultRootExists = false;
+
+  try {
+    await fs.access(resolvedDefaultRoot);
+    defaultRootExists = true;
+  } catch {
+    defaultRootExists = false;
+  }
+
+  const neo4jStatus = await checkNeo4jConnection();
+
   res.json({
     ok: true,
     neo4jConfigured: isNeo4jConfigured(),
+    neo4jReachable: neo4jStatus.reachable,
+    neo4jMessage: neo4jStatus.message || null,
+    neo4jDatabase: neo4jStatus.database || null,
     analyzedRoot: lastGraph.rootPath,
-    defaultRoot: process.env.TARGET_CODEBASE || sampleCodebasePath
+    defaultRoot: resolvedDefaultRoot,
+    defaultRootExists,
+    startupError,
+    lastPersistence
   });
 });
 
 app.post("/api/analyze", async (req, res) => {
-  const requestedRoot = req.body?.rootPath || process.env.TARGET_CODEBASE || sampleCodebasePath;
+  const requestedRoot = resolveCodebasePath(req.body?.rootPath || process.env.TARGET_CODEBASE);
 
   try {
+    await fs.access(requestedRoot);
     const graph = await analyzeCodebase(requestedRoot);
     const persistence = await writeGraph(graph);
+    lastPersistence = persistence;
     lastGraph = graph;
+    startupError = null;
 
     res.json({
       ...graph,
       persistence
     });
   } catch (error) {
+    startupError = error instanceof Error ? error.message : String(error);
     res.status(500).json({
       error: "Analysis failed",
-      message: error instanceof Error ? error.message : String(error)
+      message: startupError
     });
   }
 });
@@ -145,17 +189,19 @@ app.get("/api/graph", async (_req, res) => {
       ...lastGraph
     });
   } catch (error) {
+    startupError = error instanceof Error ? error.message : String(error);
     try {
       const graph = await getDefaultGraph();
       res.json({
         source: "generated-fallback",
         ...graph,
-        warning: error instanceof Error ? error.message : String(error)
+        warning: startupError
       });
     } catch (fallbackError) {
+      startupError = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
       res.status(500).json({
         error: "Could not load graph",
-        message: fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
+        message: startupError
       });
     }
   }
@@ -248,6 +294,7 @@ async function startServerWithPortFallback(basePort) {
 const server = await startServerWithPortFallback(port);
 
 getDefaultGraph().catch((error) => {
+  startupError = error instanceof Error ? error.message : String(error);
   console.error("Initial sample analysis failed:", error);
 });
 

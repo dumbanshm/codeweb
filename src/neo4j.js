@@ -61,6 +61,38 @@ export function isNeo4jConfigured() {
   return Boolean(getNeo4jConfig());
 }
 
+export async function checkNeo4jConnection() {
+  const config = getNeo4jConfig();
+  const activeDriver = getDriver();
+
+  if (!config || !activeDriver) {
+    return {
+      configured: false,
+      reachable: false,
+      message: "Neo4j environment variables are not configured."
+    };
+  }
+
+  const session = activeDriver.session({ database: config.database });
+  try {
+    await session.run("RETURN 1 AS ok");
+    return {
+      configured: true,
+      reachable: true,
+      database: config.database
+    };
+  } catch (error) {
+    return {
+      configured: true,
+      reachable: false,
+      database: config.database,
+      message: error instanceof Error ? error.message : String(error)
+    };
+  } finally {
+    await session.close();
+  }
+}
+
 function getDriver() {
   const config = getNeo4jConfig();
   if (!config) {
