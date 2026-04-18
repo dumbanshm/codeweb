@@ -371,8 +371,40 @@
         fg.refresh();
       }
 
+      function escapeHtml(unsafe) {
+        return (unsafe || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+      }
+
       function setSelectionInfo(value) {
-        selectionNode.textContent = JSON.stringify(value, null, 2);
+        if (!value) {
+          selectionNode.innerHTML = "Click a node or edge to inspect it.";
+          return;
+        }
+
+        if (value.kind === "edge") {
+          selectionNode.innerHTML = `<strong>Edge:</strong> ${escapeHtml(value.type)}
+<strong>From:</strong> ${escapeHtml(value.source.id || value.source)}
+<strong>To:</strong> ${escapeHtml(value.target.id || value.target)}
+
+<em>${escapeHtml(value.summary)}</em>`;
+          return;
+        }
+
+        if (value.kind === "node") {
+          let html = `<strong>Node:</strong> ${escapeHtml(value.name)}
+<strong>Type:</strong> ${escapeHtml(value.type)}
+<strong>File:</strong> ${escapeHtml(value.filePath)}`;
+
+          if (value.snippetRange) {
+             html += `\n<strong>Lines:</strong> ${escapeHtml(value.snippetRange)}`;
+          }
+
+          if (value.snippet) {
+            html += `\n\n<hr style="border-color: rgba(255,255,255,0.1); margin: 8px 0" />\n<strong>Code Snippet:</strong>\n\n${escapeHtml(value.snippet)}`;
+          }
+
+          selectionNode.innerHTML = html;
+        }
       }
 
       async function loadNodeDetails(node) {
