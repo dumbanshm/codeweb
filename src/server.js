@@ -192,10 +192,13 @@ app.post("/api/analyze-github", async (req, res) => {
   const tempRoot = path.join(os.tmpdir(), "codeweb", tempDirId);
 
   try {
-    const git = simpleGit();
+    const git = simpleGit({
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
+    });
     await fs.mkdir(path.join(os.tmpdir(), "codeweb"), { recursive: true });
     
     // Clone repo ephemerally
+    console.log(`[GitHub] Attempting to clone ${owner}/${repo}...`);
     await git.clone(`https://github.com/${owner}/${repo}.git`, tempRoot, ["--depth", "1"]);
 
     const graph = await analyzeCodebase(tempRoot);

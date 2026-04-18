@@ -120,40 +120,48 @@ export async function writeGraph(graph) {
     await session.executeWrite(async (tx) => {
       await tx.run("MATCH (n) DETACH DELETE n");
 
+      // Group nodes by specific label for batched insertion
+      const nodesByLabel = {
+        Project: [],
+        File: [],
+        Module: [],
+        Entity: []
+      };
+
       for (const node of graph.nodes) {
-        const labels = ["GraphNode"];
-        if (node.type === "project") {
-          labels.push("Project");
-        } else if (node.type === "file") {
-          labels.push("File");
-        } else if (node.type === "module") {
-          labels.push("Module");
-        } else {
-          labels.push("Entity");
-        }
+        if (node.type === "project") nodesByLabel.Project.push(node);
+        else if (node.type === "file") nodesByLabel.File.push(node);
+        else if (node.type === "module") nodesByLabel.Module.push(node);
+        else nodesByLabel.Entity.push(node);
+      }
+
+      for (const [label, nodes] of Object.entries(nodesByLabel)) {
+        if (nodes.length === 0) continue;
         await tx.run(
-          `MERGE (n:${labels.join(":")} {id: $id})
-           SET n += $properties`,
-          {
-            id: node.id,
-            properties: node
-          }
+          `UNWIND $nodes AS node
+           MERGE (n:GraphNode:${label} {id: node.id})
+           SET n += node`,
+          { nodes }
         );
       }
 
+      // Group edges by type for batched insertion
+      const edgesByType = {};
       for (const edge of graph.edges) {
         const type = edge.type.replace(/[^A-Z_]/g, "_");
+        if (!edgesByType[type]) edgesByType[type] = [];
+        edgesByType[type].push(edge);
+      }
+
+      for (const [type, edges] of Object.entries(edgesByType)) {
+        if (edges.length === 0) continue;
         await tx.run(
-          `MATCH (from {id: $from})
-           MATCH (to {id: $to})
-           MERGE (from)-[r:${type} {id: $id}]->(to)
-           SET r += $properties`,
-          {
-            id: edge.id,
-            from: edge.from,
-            to: edge.to,
-            properties: edge
-          }
+          `UNWIND $edges AS edge
+           MATCH (from {id: edge.from})
+           MATCH (to {id: edge.to})
+           MERGE (from)-[r:${type} {id: edge.id}]->(to)
+           SET r += edge`,
+          { edges }
         );
       }
     });
