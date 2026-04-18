@@ -89,6 +89,9 @@
           </p>
         </div>
 
+      </aside>
+
+      <main class="canvas-wrap">
         <div class="panel legend">
           <h2>Legend</h2>
           <ul>
@@ -103,13 +106,15 @@
           </ul>
         </div>
 
-        <div class="panel details">
-          <h2>Selection</h2>
-          <pre id="selection">Click a node or edge to inspect it.</pre>
+        <div class="panel details closed" id="details-drawer">
+          <div class="details-header">
+            <h2>Selection Details</h2>
+            <button class="details-close" id="details-close-btn">Close</button>
+          </div>
+          <div class="details-content">
+            <pre id="selection">Click a node or edge to inspect it.</pre>
+          </div>
         </div>
-      </aside>
-
-      <main class="canvas-wrap">
         <div class="canvas-header">
           <div>
             <p class="eyebrow">Graph View</p>
@@ -138,6 +143,8 @@
       const densityRange = document.getElementById("densityRange");
       const densityValue = document.getElementById("densityValue");
       const selectionNode = document.getElementById("selection");
+      const detailsDrawer = document.getElementById("details-drawer");
+      const detailsCloseBtn = document.getElementById("details-close-btn");
       const graphTitle = document.getElementById("graphTitle");
       const graphMeta = document.getElementById("graphMeta");
       const graphNode = document.getElementById("graph");
@@ -378,8 +385,11 @@
       function setSelectionInfo(value) {
         if (!value) {
           selectionNode.innerHTML = "Click a node or edge to inspect it.";
+          detailsDrawer.classList.add("closed");
           return;
         }
+        
+        detailsDrawer.classList.remove("closed");
 
         if (value.kind === "edge") {
           selectionNode.innerHTML = `<strong>Edge:</strong> ${escapeHtml(value.type)}
@@ -518,12 +528,14 @@
           .linkDirectionalArrowRelPos(1)
           .nodeCanvasObjectMode(() => "after")
           .nodeCanvasObject((node, ctx, globalScale) => {
-            if (globalScale < 2.1) {
+            const size = nodeSize(node);
+            const fontSize = size * 1.6;
+            
+            if (globalScale < 0.6 && size <= 5) {
               return;
             }
 
             const label = summarizeNode(node);
-            const fontSize = Math.max(10, 13 / globalScale);
             const textColor = "rgba(22, 38, 56, 0.9)";
             const bgColor = "rgba(255, 255, 255, 0.72)";
 
@@ -534,13 +546,13 @@
             ctx.fillStyle = bgColor;
             ctx.fillRect(
               node.x - textWidth / 2 - padding,
-              node.y + (nodeSize(node) * 1.4),
+              node.y + (size * 1.4),
               textWidth + padding * 2,
               fontSize + padding
             );
 
             ctx.fillStyle = textColor;
-            ctx.fillText(label, node.x - textWidth / 2, node.y + nodeSize(node) * 1.4 + fontSize * 0.95);
+            ctx.fillText(label, node.x - textWidth / 2, node.y + size * 1.4 + fontSize * 0.95);
           })
           .nodeLabel((node) => {
             const label = summarizeNode(node);
@@ -568,7 +580,7 @@
           .onBackgroundClick(() => {
             clearHighlights();
             refreshVisualState();
-            selectionNode.textContent = "Click a node or edge to inspect it.";
+            setSelectionInfo(null);
           });
 
         const resizeObserver = new ResizeObserver((entries) => {
@@ -705,6 +717,11 @@
       });
       refreshButton.addEventListener("click", rebuildGraph);
       githubAnalyzeButton.addEventListener("click", analyzeGithubRepo);
+      detailsCloseBtn.addEventListener("click", () => {
+        setSelectionInfo(null);
+        clearHighlights();
+        refreshVisualState();
+      });
 
       if (initializeForceGraph()) {
         await loadHealth();

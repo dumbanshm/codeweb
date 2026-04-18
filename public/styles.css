@@ -22,7 +22,8 @@
 
 body {
   margin: 0;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   font-family: "IBM Plex Sans", "Avenir Next", sans-serif;
   color: var(--text);
   background:
@@ -34,7 +35,8 @@ body {
 .shell {
   display: grid;
   grid-template-columns: 390px 1fr;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .sidebar {
@@ -214,6 +216,17 @@ button {
   font-size: 1.45rem;
 }
 
+.legend {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  z-index: 10;
+  width: 220px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  pointer-events: none;
+}
+
 .legend ul {
   display: grid;
   gap: 10px;
@@ -269,6 +282,64 @@ button {
   background: #d64550;
 }
 
+.details {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 50vh;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  border-radius: 28px 28px 0 0;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 -12px 40px rgba(18, 35, 52, 0.08);
+  backdrop-filter: blur(20px);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+  border: 1px solid var(--panel-border);
+  border-bottom: none;
+}
+
+.details.closed {
+  transform: translateY(110%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.details-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0;
+}
+
+.details-header h2 {
+  margin: 0;
+}
+
+.details-close {
+  background: transparent;
+  border: 0;
+  width: auto;
+  color: var(--text);
+  font-size: 1rem;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.details-close:hover {
+  background: rgba(0,0,0,0.06);
+}
+
+.details-content {
+  overflow-y: auto;
+  flex: 1;
+  margin-top: 14px;
+  padding-right: 10px;
+}
+
 .details pre {
   margin: 0;
   white-space: pre-wrap;
@@ -276,13 +347,13 @@ button {
   color: var(--muted);
   font-size: 0.87rem;
   line-height: 1.45;
-  min-height: 140px;
 }
 
 .canvas-wrap {
-  display: grid;
-  grid-template-rows: auto 1fr;
-  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  position: relative;
 }
 
 .canvas-header {
@@ -304,14 +375,15 @@ button {
 }
 
 .canvas-scroll {
-  padding: 18px 24px 28px;
+  flex: 1;
+  display: flex;
+  padding: 0 24px 24px;
   overflow: hidden;
 }
 
 #graph {
+  flex: 1;
   width: 100%;
-  height: calc(100vh - 130px);
-  min-height: 680px;
   border-radius: 28px;
   border: 1px solid rgba(16, 32, 48, 0.08);
   background:
