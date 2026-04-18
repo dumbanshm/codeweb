@@ -203,9 +203,16 @@ app.post("/api/analyze-github", async (req, res) => {
 
     const graph = await analyzeCodebase(tempRoot);
     
-    const tempGit = simpleGit(tempRoot);
-    const branchSummary = await tempGit.branchLocal();
-    const branch = branchSummary.current || "main";
+    let branch = "main";
+    try {
+      const headContent = await fs.readFile(path.join(tempRoot, ".git", "HEAD"), "utf8");
+      const match = headContent.match(/ref:\s+refs\/heads\/(.+)/);
+      if (match && match[1]) {
+        branch = match[1].trim();
+      }
+    } catch (e) {
+      console.warn("Could not determine precise default github branch. Defaulting to main.");
+    }
     
     graph.githubMeta = { owner, repo, branch };
     

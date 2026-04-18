@@ -92,7 +92,7 @@
       </aside>
 
       <main class="canvas-wrap">
-        <div class="panel legend">
+        <div class="legend">
           <h2>Legend</h2>
           <ul>
             <li><span class="swatch project"></span> Project</li>
@@ -526,33 +526,33 @@
           .cooldownTicks(140)
           .linkDirectionalArrowLength(3)
           .linkDirectionalArrowRelPos(1)
-          .nodeCanvasObjectMode(() => "after")
           .nodeCanvasObject((node, ctx, globalScale) => {
-            const size = nodeSize(node);
-            const fontSize = size * 1.6;
-            
-            if (globalScale < 0.6 && size <= 5) {
+            if (globalScale < 1.0) {
               return;
             }
 
+            const size = nodeSize(node);
             const label = summarizeNode(node);
             const textColor = "rgba(22, 38, 56, 0.9)";
-            const bgColor = "rgba(255, 255, 255, 0.72)";
+            const bgColor = "rgba(255, 255, 255, 0.76)";
 
-            ctx.font = `${fontSize}px IBM Plex Sans`;
+            // Make font size perfectly static ON SCREEN so nodes appear to grow relatively around it.
+            const fontSize = 12 / globalScale; 
+
+            ctx.font = `${fontSize}px "IBM Plex Sans", sans-serif`;
             const textWidth = ctx.measureText(label).width;
             const padding = fontSize * 0.4;
 
             ctx.fillStyle = bgColor;
             ctx.fillRect(
               node.x - textWidth / 2 - padding,
-              node.y + (size * 1.4),
+              node.y + (size * 1.05),
               textWidth + padding * 2,
-              fontSize + padding
+              fontSize + padding * 1.5
             );
 
             ctx.fillStyle = textColor;
-            ctx.fillText(label, node.x - textWidth / 2, node.y + size * 1.4 + fontSize * 0.95);
+            ctx.fillText(label, node.x - textWidth / 2, node.y + (size * 1.05) + fontSize * 0.95);
           })
           .nodeLabel((node) => {
             const label = summarizeNode(node);
