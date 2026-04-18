@@ -34,10 +34,18 @@
         </div>
 
         <div class="panel form-panel">
-          <label for="rootPath">Analyzed codebase</label>
+          <label for="githubUrl">Analyze GitHub Repo</label>
+          <input id="githubUrl" type="text" placeholder="https://github.com/owner/repo" />
+          <div class="button-row single">
+            <button type="button" id="github-analyze-button">Analyze Repo</button>
+          </div>
+          
+          <div style="margin: 1rem 0; border-bottom: 1px solid rgba(0,0,0,0.1)"></div>
+
+          <label for="rootPath">Local codebase</label>
           <input id="rootPath" type="text" readonly />
           <div class="button-row single">
-            <button type="button" id="refresh-button">Rebuild graph</button>
+            <button type="button" id="refresh-button">Rebuild local graph</button>
           </div>
           <p id="status" class="status">Loading codebase graph...</p>
         </div>
@@ -116,6 +124,8 @@
     </div>
 
     <script type="module">
+      const githubUrlInput = document.getElementById("githubUrl");
+      const githubAnalyzeButton = document.getElementById("github-analyze-button");
       const rootPathInput = document.getElementById("rootPath");
       const refreshButton = document.getElementById("refresh-button");
       const statusNode = document.getElementById("status");
@@ -567,7 +577,13 @@
 
           currentGraph = graph;
           setStats(graph.summary || {});
-          graphTitle.textContent = graph.rootPath?.split("/").filter(Boolean).at(-1) || "Bundled sample codebase";
+          
+          if (graph.githubMeta) {
+            graphTitle.textContent = `${graph.githubMeta.owner}/${graph.githubMeta.repo}`;
+          } else {
+            graphTitle.textContent = graph.rootPath?.split("/").filter(Boolean).at(-1) || "Bundled sample codebase";
+          }
+          
           graphMeta.textContent = graph.generatedAt
             ? `Generated ${new Date(graph.generatedAt).toLocaleString()}`
             : `Loaded from ${graph.source || "memory"}`;
@@ -575,6 +591,47 @@
           updateGraphRenderer();
         } catch {
           await rebuildGraph();
+        }
+      }
+
+      async function analyzeGithubRepo() {
+        const url = githubUrlInput.value.trim();
+        if (!url) {
+          setStatus("Please enter a GitHub URL.");
+          return;
+        }
+
+        setStatus(`Cloning & Analyzing ${url}... Please wait.`);
+        try {
+          const response = await fetch("/api/analyze-github", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url })
+          });
+
+          const graph = await response.json();
+          if (!response.ok) {
+            setStatus(graph.message || graph.error || "GitHub analysis failed.");
+            return;
+          }
+
+          if (!hasRenderableGraph(graph)) {
+            setStatus("Analysis completed but graph is empty.");
+            return;
+          }
+
+          currentGraph = graph;
+          setStats(graph.summary || {});
+          
+          graphTitle.textContent = graph.githubMeta 
+            ? `${graph.githubMeta.owner}/${graph.githubMeta.repo}`
+            : graph.rootPath?.split("/").filter(Boolean).at(-1) || "Codebase";
+            
+          graphMeta.textContent = `Generated ${new Date(graph.generatedAt).toLocaleString()} (Ephemeral)`;
+          setStatus("GitHub Graph rebuilt.");
+          updateGraphRenderer();
+        } catch {
+          setStatus("Could not analyze GitHub repo. Check network or url.");
         }
       }
 
@@ -615,6 +672,7 @@
         updateGraphRenderer();
       });
       refreshButton.addEventListener("click", rebuildGraph);
+      githubAnalyzeButton.addEventListener("click", analyzeGithubRepo);
 
       if (initializeForceGraph()) {
         await loadHealth();

@@ -1,7 +1,10 @@
 import express from "express";
 import fs from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
+import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { simpleGit } from "simple-git";
 import { analyzeCodebase } from "./analyzer.js";
 import { checkNeo4jConnection, closeNeo4j, isNeo4jConfigured, loadEnvFromFile, readGraph, writeGraph } from "./neo4j.js";
 
@@ -19,6 +22,7 @@ let activePort = port;
 
 let lastGraph = {
   rootPath: null,
+  githubMeta: null,
   generatedAt: null,
   summary: { fileCount: 0, entityCount: 0, moduleCount: 0, edgeCount: 0 },
   nodes: [],
@@ -170,6 +174,62 @@ app.post("/api/analyze", async (req, res) => {
   }
 });
 
+app.post("/api/analyze-github", async (req, res) => {
+  const { url } = req.body;
+  if (!url || typeof url !== "string") {
+    return res.status(400).json({ error: "Missing or invalid repository URL" });
+  }
+
+  const match = url.match(/github\.com\/([^\/]+)\/([^\/]+?)(?:\.git|\/|$)/);
+  if (!match) {
+    return res.status(400).json({ error: "Invalid GitHub URL format" });
+  }
+
+  const owner = match[1];
+  const repo = match[2];
+  
+  const tempDirId = randomUUID();
+  const tempRoot = path.join(os.tmpdir(), "codeweb", tempDirId);
+
+  try {
+    const git = simpleGit();
+    await fs.mkdir(path.join(os.tmpdir(), "codeweb"), { recursive: true });
+    
+    // Clone repo ephemerally
+    await git.clone(`https://github.com/${owner}/${repo}.git`, tempRoot, ["--depth", "1"]);
+
+    const graph = await analyzeCodebase(tempRoot);
+    
+    const tempGit = simpleGit(tempRoot);
+    const branchSummary = await tempGit.branchLocal();
+    const branch = branchSummary.current || "main";
+    
+    graph.githubMeta = { owner, repo, branch };
+    
+    const persistence = await writeGraph(graph);
+    lastPersistence = persistence;
+    lastGraph = graph;
+    startupError = null;
+
+    res.json({
+      ...graph,
+      persistence
+    });
+  } catch (error) {
+    startupError = error instanceof Error ? error.message : String(error);
+    res.status(500).json({
+      error: "GitHub analysis failed",
+      message: startupError
+    });
+  } finally {
+    try {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    } catch (rmError) {
+      console.error(`Failed to delete temp dir ${tempRoot}:`, rmError);
+    }
+  }
+});
+
 app.get("/api/graph", async (_req, res) => {
   try {
     const storedGraph = await readGraph();
@@ -243,9 +303,33 @@ app.get("/api/node-details", async (req, res) => {
       return;
     }
 
-    const absoluteFilePath = path.join(graph.rootPath, details.filePath);
-    const content = await fs.readFile(absoluteFilePath, "utf8");
-    const snippetInfo = buildSnippet(content, details.line || 1, details.endLine || details.line || 1);
+    let absoluteFilePath = "";
+    let content = "";
+    let snippetInfo = null;
+
+    if (graph.githubMeta) {
+      const { owner, repo, branch } = graph.githubMeta;
+      absoluteFilePath = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${details.filePath}`;
+      try {
+        const fetchResponse = await fetch(absoluteFilePath);
+        if (!fetchResponse.ok) {
+          throw new Error(`GitHub returned ${fetchResponse.status}`);
+        }
+        content = await fetchResponse.text();
+      } catch (err) {
+        return res.json({
+          ...details,
+          absoluteFilePath,
+          snippet: "Error fetching code snippet from GitHub: " + err.message,
+          snippetMode: "none"
+        });
+      }
+    } else {
+      absoluteFilePath = path.join(graph.rootPath, details.filePath);
+      content = await fs.readFile(absoluteFilePath, "utf8");
+    }
+
+    snippetInfo = buildSnippet(content, details.line || 1, details.endLine || details.line || 1);
 
     res.json({
       ...details,
