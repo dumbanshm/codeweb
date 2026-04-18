@@ -31,7 +31,7 @@ let lastGraph = {
 let startupError = null;
 let lastPersistence = null;
 
-const MAX_SNIPPET_CHARS = 4500;
+const MAX_SNIPPET_CHARS = 500000;  // No practical limit — frontend handles scrolling
 const PREVIEW_LINE_WINDOW = 40;
 
 function sanitizeEnvPath(value) {
@@ -285,18 +285,26 @@ app.get("/api/graph", async (_req, res) => {
 
 app.get("/api/node-details", async (req, res) => {
   const nodeId = req.query?.id;
+  console.log(`[node-details] Request for: ${nodeId}`);
+
   if (!nodeId || typeof nodeId !== "string") {
+    console.log(`[node-details] REJECTED: missing id param`);
     res.status(400).json({ error: "Missing required query param: id" });
     return;
   }
 
   try {
     const graph = await getGraphSnapshot();
+    console.log(`[node-details] Graph has ${graph.nodes?.length || 0} nodes, githubMeta: ${!!graph.githubMeta}, rootPath: ${graph.rootPath}`);
+
     const node = (graph.nodes || []).find((candidate) => candidate.id === nodeId);
     if (!node) {
+      console.log(`[node-details] Node NOT FOUND: ${nodeId}`);
       res.status(404).json({ error: "Node not found", id: nodeId });
       return;
     }
+
+    console.log(`[node-details] Found node: type=${node.type}, filePath=${node.filePath || node.path}, line=${node.line}`);
 
     const details = {
       id: node.id,
@@ -309,6 +317,7 @@ app.get("/api/node-details", async (req, res) => {
     };
 
     if (!graph.rootPath || !details.filePath || details.type === "module" || details.type === "project") {
+      console.log(`[node-details] Returning without snippet: rootPath=${!!graph.rootPath}, filePath=${details.filePath}, type=${details.type}`);
       res.json({ ...details, snippet: null, snippetMode: "none" });
       return;
     }
@@ -320,26 +329,38 @@ app.get("/api/node-details", async (req, res) => {
     if (graph.githubMeta) {
       const { owner, repo, branch } = graph.githubMeta;
       absoluteFilePath = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${details.filePath}`;
+      console.log(`[node-details] Fetching from GitHub: ${absoluteFilePath}`);
       try {
         const fetchResponse = await fetch(absoluteFilePath);
+        console.log(`[node-details] GitHub response: ${fetchResponse.status}`);
         if (!fetchResponse.ok) {
           throw new Error(`GitHub returned ${fetchResponse.status}`);
         }
         content = await fetchResponse.text();
+        console.log(`[node-details] Got ${content.length} chars from GitHub`);
       } catch (err) {
+        console.error(`[node-details] GitHub fetch FAILED:`, err.message);
         return res.json({
           ...details,
           absoluteFilePath,
-          snippet: "Error fetching code snippet from GitHub: " + err.message,
-          snippetMode: "none"
+          snippet: "Error fetching from GitHub: " + err.message,
+          snippetMode: "error"
         });
       }
     } else {
       absoluteFilePath = path.join(graph.rootPath, details.filePath);
+      console.log(`[node-details] Reading local file: ${absoluteFilePath}`);
       content = await fs.readFile(absoluteFilePath, "utf8");
+      console.log(`[node-details] Got ${content.length} chars from local file`);
     }
 
-    snippetInfo = buildSnippet(content, details.line || 1, details.endLine || details.line || 1);
+    // For file-type nodes or nodes without line info, show the whole file
+    const totalLines = content.split("\n").length;
+    const startLine = details.line || 1;
+    const endLine = details.endLine || (details.line ? details.line : totalLines);
+
+    snippetInfo = buildSnippet(content, startLine, endLine);
+    console.log(`[node-details] Snippet built: mode=${snippetInfo.mode}, lines ${snippetInfo.startLine}-${snippetInfo.endLine}, length=${snippetInfo.snippet.length}`);
 
     res.json({
       ...details,
@@ -351,6 +372,7 @@ app.get("/api/node-details", async (req, res) => {
       previewReason: snippetInfo.previewReason || null
     });
   } catch (error) {
+    console.error(`[node-details] CRASH:`, error);
     res.status(500).json({
       error: "Could not load node details",
       message: error instanceof Error ? error.message : String(error)
@@ -358,7 +380,10 @@ app.get("/api/node-details", async (req, res) => {
   }
 });
 
-app.get("*", (_req, res) => {
+app.get("*", (req, res) => {
+  if (req.path.startsWith("/api/")) {
+    return res.status(404).json({ error: "API endpoint not found", path: req.path });
+  }
   res.sendFile(path.join(projectRoot, "public", "index.html"));
 });
 

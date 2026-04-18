@@ -3,33 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sample Codebase Dependency Graph</title>
+    <title>CodeWeb – Dependency Graph Explorer</title>
     <link rel="stylesheet" href="./styles.css" />
     <script src="https://unpkg.com/force-graph"></script>
     <script src="https://cdn.jsdelivr.net/npm/force-graph"></script>
   </head>
   <body>
     <div class="shell">
+      <!-- ── Left sidebar ── -->
       <aside class="sidebar">
         <div class="panel hero">
-          <p class="eyebrow">Sample Codebase</p>
+          <p class="eyebrow">Codebase</p>
           <h1>Dependency Graph Explorer</h1>
           <p class="builder-tag">by devansh</p>
-          <a
-            class="github-btn"
-            href="https://github.com/dumbanshm"
-            target="_blank"
-            rel="noopener noreferrer"
-            >GitHub</a
-          >
-          <p class="lede">
-            Force-directed dependency graph with zoom, pan, drag, and focused neighborhood
-            highlighting.
-          </p>
+          <a class="github-btn" href="https://github.com/dumbanshm" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <p class="lede">Force-directed dependency graph with zoom, pan, drag, and focused neighborhood highlighting.</p>
           <div class="hero-badges">
             <span class="badge">Neo4j-backed</span>
-            <span class="badge">Elastic force layout</span>
-            <span class="badge">Clickable neighborhoods</span>
+            <span class="badge">Force layout</span>
+            <span class="badge">Click to inspect</span>
           </div>
         </div>
 
@@ -39,9 +31,7 @@
           <div class="button-row single">
             <button type="button" id="github-analyze-button">Analyze Repo</button>
           </div>
-          
-          <div style="margin: 1rem 0; border-bottom: 1px solid rgba(0,0,0,0.1)"></div>
-
+          <div style="margin: 0.6rem 0; border-bottom: 1px solid rgba(0,0,0,0.1)"></div>
           <label for="rootPath">Local codebase</label>
           <input id="rootPath" type="text" readonly />
           <div class="button-row single">
@@ -51,48 +41,28 @@
         </div>
 
         <div class="panel stats">
-          <div>
-            <span>Files</span>
-            <strong id="fileCount">0</strong>
-          </div>
-          <div>
-            <span>Entities</span>
-            <strong id="entityCount">0</strong>
-          </div>
-          <div>
-            <span>Modules</span>
-            <strong id="moduleCount">0</strong>
-          </div>
-          <div>
-            <span>Edges</span>
-            <strong id="edgeCount">0</strong>
-          </div>
+          <div><span>Files</span><strong id="fileCount">0</strong></div>
+          <div><span>Entities</span><strong id="entityCount">0</strong></div>
+          <div><span>Modules</span><strong id="moduleCount">0</strong></div>
+          <div><span>Edges</span><strong id="edgeCount">0</strong></div>
         </div>
 
         <div class="panel controls">
           <h2>Explore</h2>
           <label for="searchInput">Search nodes</label>
           <input id="searchInput" type="text" placeholder="main.py, get_users, pandas..." />
-
           <label for="edgeFilter">Visible relations</label>
           <select id="edgeFilter">
             <option value="all">All relations</option>
             <option value="dependency">Only CALLS and IMPORTS</option>
             <option value="structure">Only CONTAINS</option>
           </select>
-
           <label for="densityRange">Max dependency edges</label>
           <input id="densityRange" type="range" min="20" max="520" step="10" value="220" />
           <p id="densityValue" class="hint">Showing up to 220 dependency edges.</p>
-          <p class="hint">
-            Click node: highlight direct neighbors. Drag to reposition. Scroll to zoom.
-          </p>
         </div>
 
-      </aside>
-
-      <main class="canvas-wrap">
-        <div class="legend">
+        <div class="panel legend">
           <h2>Legend</h2>
           <ul>
             <li><span class="swatch project"></span> Project</li>
@@ -100,21 +70,15 @@
             <li><span class="swatch function"></span> Function / method</li>
             <li><span class="swatch class"></span> Class</li>
             <li><span class="swatch module"></span> External module</li>
-            <li><span class="line contains"></span> `CONTAINS`</li>
-            <li><span class="line calls"></span> `CALLS`</li>
-            <li><span class="line imports"></span> `IMPORTS`</li>
+            <li><span class="line contains"></span> CONTAINS</li>
+            <li><span class="line calls"></span> CALLS</li>
+            <li><span class="line imports"></span> IMPORTS</li>
           </ul>
         </div>
+      </aside>
 
-        <div class="panel details closed" id="details-drawer">
-          <div class="details-header">
-            <h2>Selection Details</h2>
-            <button class="details-close" id="details-close-btn">Close</button>
-          </div>
-          <div class="details-content">
-            <pre id="selection">Click a node or edge to inspect it.</pre>
-          </div>
-        </div>
+      <!-- ── Right column: graph + code drawer ── -->
+      <main class="right-col">
         <div class="canvas-header">
           <div>
             <p class="eyebrow">Graph View</p>
@@ -122,13 +86,26 @@
           </div>
           <p id="graphMeta" class="graph-meta">Preparing graph...</p>
         </div>
-        <div class="canvas-scroll">
+        <div class="canvas-area">
           <div id="graph"></div>
+        </div>
+
+        <!-- ── Permanent IDE code drawer ── -->
+        <div class="code-drawer collapsed" id="code-drawer">
+          <div class="code-drawer-handle" id="code-drawer-handle">
+            <span>CODE VIEWER — click a node to inspect source</span>
+            <button class="toggle-btn" id="drawer-toggle-btn">▲ Open</button>
+          </div>
+          <div class="code-drawer-tabs" id="code-tabs"></div>
+          <div class="code-drawer-content" id="code-content">
+            <div class="code-drawer-empty">No node selected — click a node in the graph to view its code.</div>
+          </div>
         </div>
       </main>
     </div>
 
     <script type="module">
+      /* ── DOM refs ── */
       const githubUrlInput = document.getElementById("githubUrl");
       const githubAnalyzeButton = document.getElementById("github-analyze-button");
       const rootPathInput = document.getElementById("rootPath");
@@ -142,27 +119,23 @@
       const edgeFilter = document.getElementById("edgeFilter");
       const densityRange = document.getElementById("densityRange");
       const densityValue = document.getElementById("densityValue");
-      const selectionNode = document.getElementById("selection");
-      const detailsDrawer = document.getElementById("details-drawer");
-      const detailsCloseBtn = document.getElementById("details-close-btn");
       const graphTitle = document.getElementById("graphTitle");
       const graphMeta = document.getElementById("graphMeta");
       const graphNode = document.getElementById("graph");
+      const codeTabsEl = document.getElementById("code-tabs");
+      const codeContentEl = document.getElementById("code-content");
+      const codeDrawerEl = document.getElementById("code-drawer");
+      const drawerHandleEl = document.getElementById("code-drawer-handle");
+      const drawerToggleBtn = document.getElementById("drawer-toggle-btn");
 
+      /* ── Color maps ── */
       const nodeTypeColor = {
-        project: "#355c7d",
-        file: "#f4b860",
-        class: "#ef8f83",
-        module: "#8ecae6",
-        function: "#8ec5a0",
-        method: "#8ec5a0"
+        project: "#355c7d", file: "#f4b860", class: "#ef8f83",
+        module: "#8ecae6", function: "#8ec5a0", method: "#8ec5a0"
       };
-      const edgeTypeColor = {
-        CONTAINS: "#4aa56c",
-        CALLS: "#2563eb",
-        IMPORTS: "#d64550"
-      };
+      const edgeTypeColor = { CONTAINS: "#4aa56c", CALLS: "#2563eb", IMPORTS: "#d64550" };
 
+      /* ── State ── */
       let currentGraph = null;
       let defaultRoot = "";
       let selectedNodeId = null;
@@ -173,28 +146,159 @@
       let neighborsById = new Map();
       let fg;
 
-      function setStatus(message) {
-        statusNode.textContent = message;
+      /* ── Tab state for code drawer ── */
+      let openTabs = [];       // [{id, label, filePath, content, line}]
+      let activeTabId = null;
+
+      /* ── Helpers ── */
+      function setStatus(msg) { statusNode.textContent = msg; }
+      function setStats(s = {}) {
+        fileCountNode.textContent = s.fileCount ?? 0;
+        entityCountNode.textContent = s.entityCount ?? 0;
+        moduleCountNode.textContent = s.moduleCount ?? 0;
+        edgeCountNode.textContent = s.edgeCount ?? 0;
+      }
+      function summarizeNode(n) { return n.qualifiedName || n.name || n.label || n.path || n.id; }
+      function summarizeEdge(e) { return `${e.type}: ${e.from ?? e.source} -> ${e.to ?? e.target}`; }
+      function edgeId(e) { return e.id || `${e.source}->${e.target}:${e.type ?? "EDGE"}`; }
+      function escapeHtml(s) {
+        return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
       }
 
-      function setStats(summary = {}) {
-        fileCountNode.textContent = summary.fileCount ?? 0;
-        entityCountNode.textContent = summary.entityCount ?? 0;
-        moduleCountNode.textContent = summary.moduleCount ?? 0;
-        edgeCountNode.textContent = summary.edgeCount ?? 0;
+      /* ════════════════════════════════════════
+         CODE DRAWER — tabs + content rendering
+         ════════════════════════════════════════ */
+
+      function renderTabs() {
+        codeTabsEl.innerHTML = "";
+        for (const tab of openTabs) {
+          const btn = document.createElement("button");
+          btn.className = "code-tab" + (tab.id === activeTabId ? " active" : "");
+          btn.innerHTML = `${escapeHtml(tab.label)} <span class="code-tab-close" data-close="${tab.id}">&times;</span>`;
+          btn.addEventListener("click", (e) => {
+            if (e.target.dataset.close) {
+              closeTab(e.target.dataset.close);
+            } else {
+              activateTab(tab.id);
+            }
+          });
+          codeTabsEl.appendChild(btn);
+        }
       }
 
-      function summarizeNode(node) {
-        return node.qualifiedName || node.name || node.label || node.path || node.id;
+      function renderActiveContent() {
+        const tab = openTabs.find(t => t.id === activeTabId);
+        if (!tab) {
+          codeContentEl.innerHTML = `<div class="code-drawer-empty">No node selected — click a node in the graph to view its code.</div>`;
+          return;
+        }
+        if (tab.loading) {
+          codeContentEl.innerHTML = `<div class="code-drawer-empty">Loading snippet...</div>`;
+          return;
+        }
+
+        const startLine = tab.line || 1;
+        const codeLines = tab.content.split("\n");
+        const numberedLines = codeLines.map((line, i) => {
+          const lineNum = startLine + i;
+          const numStr = String(lineNum).padStart(4, " ");
+          return `<span style="color:#6c7086;user-select:none">${escapeHtml(numStr)} │ </span>${escapeHtml(line)}`;
+        }).join("\n");
+
+        const header = `<span style="color:#89b4fa">${escapeHtml(tab.filePath || tab.label)}</span>` +
+          (tab.line ? ` <span style="color:#6c7086">L${tab.line}${tab.endLine ? '-L'+tab.endLine : ''}</span>` : '') +
+          ` <span style="color:#585b70">(${codeLines.length} lines)</span>`;
+        codeContentEl.innerHTML = `<pre>${header}\n${"─".repeat(60)}\n${numberedLines}</pre>`;
       }
 
-      function summarizeEdge(edge) {
-        return `${edge.type}: ${edge.from ?? edge.source} -> ${edge.to ?? edge.target}`;
+      function activateTab(id) {
+        activeTabId = id;
+        renderTabs();
+        renderActiveContent();
       }
 
-      function edgeId(edge) {
-        return edge.id || `${edge.source}->${edge.target}:${edge.type ?? "EDGE"}`;
+      function closeTab(id) {
+        openTabs = openTabs.filter(t => t.id !== id);
+        if (activeTabId === id) {
+          activeTabId = openTabs.length > 0 ? openTabs[openTabs.length - 1].id : null;
+        }
+        renderTabs();
+        renderActiveContent();
       }
+
+      function openNodeTab(nodeId, label) {
+        // Auto-expand the drawer
+        if (typeof setDrawerOpen === 'function') setDrawerOpen(true);
+
+        // If tab already open, just activate it
+        const existing = openTabs.find(t => t.id === nodeId);
+        if (existing) {
+          activateTab(nodeId);
+          return;
+        }
+        // Add new tab in loading state
+        const tab = { id: nodeId, label, filePath: "", content: "", line: null, endLine: null, loading: true };
+        openTabs.push(tab);
+        activeTabId = nodeId;
+        renderTabs();
+        renderActiveContent();
+
+        // Fetch from API
+        console.log(`[CodeDrawer] Fetching node details for: ${nodeId}`);
+        fetch(`/api/node-details?id=${encodeURIComponent(nodeId)}`)
+          .then(res => {
+            console.log(`[CodeDrawer] Response status: ${res.status}, content-type: ${res.headers.get('content-type')}`);
+            if (!res.ok) {
+              return res.text().then(body => {
+                console.error(`[CodeDrawer] API error body:`, body);
+                throw new Error(`Server returned ${res.status}`);
+              });
+            }
+            return res.json();
+          })
+          .then(details => {
+            console.log(`[CodeDrawer] Got details:`, {
+              id: details.id,
+              type: details.type,
+              name: details.name,
+              filePath: details.filePath,
+              snippetMode: details.snippetMode,
+              hasSnippet: !!details.snippet,
+              snippetLength: details.snippet?.length || 0,
+            });
+
+            tab.loading = false;
+            tab.filePath = details.filePath || details.name || label;
+            tab.label = details.name || label;
+            tab.line = details.snippetStartLine || details.line;
+            tab.endLine = details.snippetEndLine || details.endLine;
+
+            if (details.snippet) {
+              tab.content = details.snippet;
+            } else {
+              tab.content = `[${details.type}] ${details.name || details.id}\n\nNo code snippet available for this node type.`;
+            }
+
+            if (activeTabId === nodeId) {
+              renderTabs();
+              renderActiveContent();
+            }
+          })
+          .catch(err => {
+            console.error(`[CodeDrawer] Fetch failed for ${nodeId}:`, err);
+            tab.loading = false;
+            tab.content = `Error loading snippet:\n${err.message}\n\nCheck browser console (F12) for details.`;
+            if (activeTabId === nodeId) {
+              renderTabs();
+              renderActiveContent();
+            }
+          });
+      }
+
+      /* ════════════════════════════════════════
+         GRAPH FILTERING
+         ════════════════════════════════════════ */
 
       function getFilteredGraph(graph) {
         const query = searchInput.value.trim().toLowerCase();
@@ -203,322 +307,146 @@
         const dependencyEdges = [];
 
         for (const edge of graph.edges || []) {
-          if (edge.type === "CONTAINS") {
-            containsEdges.push(edge);
-          } else {
-            dependencyEdges.push(edge);
-          }
+          if (edge.type === "CONTAINS") containsEdges.push(edge);
+          else dependencyEdges.push(edge);
         }
 
-        dependencyEdges.sort((left, right) => {
-          const leftWeight = left.type === "CALLS" ? 0 : 1;
-          const rightWeight = right.type === "CALLS" ? 0 : 1;
-          return leftWeight - rightWeight || left.id.localeCompare(right.id);
+        dependencyEdges.sort((a, b) => {
+          const aw = a.type === "CALLS" ? 0 : 1;
+          const bw = b.type === "CALLS" ? 0 : 1;
+          return aw - bw || a.id.localeCompare(b.id);
         });
 
         let visibleEdges;
-        if (edgeFilter.value === "dependency") {
-          visibleEdges = dependencyEdges.slice(0, dependencyLimit);
-        } else if (edgeFilter.value === "structure") {
-          visibleEdges = containsEdges;
-        } else {
-          visibleEdges = [...containsEdges, ...dependencyEdges.slice(0, dependencyLimit)];
-        }
+        if (edgeFilter.value === "dependency") visibleEdges = dependencyEdges.slice(0, dependencyLimit);
+        else if (edgeFilter.value === "structure") visibleEdges = containsEdges;
+        else visibleEdges = [...containsEdges, ...dependencyEdges.slice(0, dependencyLimit)];
 
         let visibleNodeIds = new Set();
-        for (const edge of visibleEdges) {
-          visibleNodeIds.add(edge.from);
-          visibleNodeIds.add(edge.to);
-        }
-
-        if (visibleNodeIds.size === 0) {
-          visibleNodeIds = new Set((graph.nodes || []).map((node) => node.id));
-        }
+        for (const e of visibleEdges) { visibleNodeIds.add(e.from); visibleNodeIds.add(e.to); }
+        if (visibleNodeIds.size === 0) visibleNodeIds = new Set((graph.nodes || []).map(n => n.id));
 
         if (query) {
-          const matchedNodeIds = new Set(
-            (graph.nodes || [])
-              .filter((node) =>
-                [node.id, node.path, node.name, node.label, node.qualifiedName]
-                  .filter(Boolean)
-                  .some((value) => String(value).toLowerCase().includes(query))
-              )
-              .map((node) => node.id)
-          );
-
-          const expandedNodeIds = new Set(matchedNodeIds);
-          for (const edge of visibleEdges) {
-            if (matchedNodeIds.has(edge.from) || matchedNodeIds.has(edge.to)) {
-              expandedNodeIds.add(edge.from);
-              expandedNodeIds.add(edge.to);
-            }
+          const matched = new Set((graph.nodes || [])
+            .filter(n => [n.id, n.path, n.name, n.label, n.qualifiedName].filter(Boolean).some(v => String(v).toLowerCase().includes(query)))
+            .map(n => n.id));
+          const expanded = new Set(matched);
+          for (const e of visibleEdges) {
+            if (matched.has(e.from) || matched.has(e.to)) { expanded.add(e.from); expanded.add(e.to); }
           }
-
-          visibleNodeIds = new Set([...visibleNodeIds].filter((id) => expandedNodeIds.has(id)));
-          visibleEdges = visibleEdges.filter((edge) => visibleNodeIds.has(edge.from) && visibleNodeIds.has(edge.to));
+          visibleNodeIds = new Set([...visibleNodeIds].filter(id => expanded.has(id)));
+          visibleEdges = visibleEdges.filter(e => visibleNodeIds.has(e.from) && visibleNodeIds.has(e.to));
         }
 
-        return {
-          nodes: (graph.nodes || []).filter((node) => visibleNodeIds.has(node.id)),
-          edges: visibleEdges
-        };
+        return { nodes: (graph.nodes || []).filter(n => visibleNodeIds.has(n.id)), edges: visibleEdges };
       }
 
+      /* ════════════════════════════════════════
+         GRAPH VISUAL STATE
+         ════════════════════════════════════════ */
+
       function buildNeighbors(links) {
-        const neighbors = new Map();
-        for (const link of links) {
-          const sourceId = typeof link.source === "object" ? link.source.id : link.source;
-          const targetId = typeof link.target === "object" ? link.target.id : link.target;
-
-          if (!neighbors.has(sourceId)) {
-            neighbors.set(sourceId, new Set());
-          }
-          if (!neighbors.has(targetId)) {
-            neighbors.set(targetId, new Set());
-          }
-
-          neighbors.get(sourceId).add(targetId);
-          neighbors.get(targetId).add(sourceId);
+        const m = new Map();
+        for (const l of links) {
+          const s = typeof l.source === "object" ? l.source.id : l.source;
+          const t = typeof l.target === "object" ? l.target.id : l.target;
+          if (!m.has(s)) m.set(s, new Set());
+          if (!m.has(t)) m.set(t, new Set());
+          m.get(s).add(t); m.get(t).add(s);
         }
-        return neighbors;
+        return m;
       }
 
       function clearHighlights() {
-        selectedNodeId = null;
-        selectedLinkId = null;
-        highlightedNodeIds = new Set();
-        highlightedLinkIds = new Set();
+        selectedNodeId = null; selectedLinkId = null;
+        highlightedNodeIds = new Set(); highlightedLinkIds = new Set();
       }
 
       function applyNodeHighlight(nodeId) {
-        selectedNodeId = nodeId;
-        selectedLinkId = null;
-        highlightedNodeIds = new Set([nodeId]);
-        highlightedLinkIds = new Set();
-
-        for (const neighborId of neighborsById.get(nodeId) || []) {
-          highlightedNodeIds.add(neighborId);
-        }
-
-        for (const link of graphData.links) {
-          const sourceId = typeof link.source === "object" ? link.source.id : link.source;
-          const targetId = typeof link.target === "object" ? link.target.id : link.target;
-          if (sourceId === nodeId || targetId === nodeId) {
-            highlightedLinkIds.add(edgeId(link));
-          }
+        selectedNodeId = nodeId; selectedLinkId = null;
+        highlightedNodeIds = new Set([nodeId]); highlightedLinkIds = new Set();
+        for (const nid of neighborsById.get(nodeId) || []) highlightedNodeIds.add(nid);
+        for (const l of graphData.links) {
+          const s = typeof l.source === "object" ? l.source.id : l.source;
+          const t = typeof l.target === "object" ? l.target.id : l.target;
+          if (s === nodeId || t === nodeId) highlightedLinkIds.add(edgeId(l));
         }
       }
 
-      function baseNodeColor(node) {
-        return nodeTypeColor[node.type] || "#8ec5a0";
+      function baseNodeColor(n) { return nodeTypeColor[n.type] || "#8ec5a0"; }
+      function fadedNodeColor() { return "rgba(173, 184, 194, 0.18)"; }
+
+      function linkColor(l) {
+        if (selectedLinkId && edgeId(l) === selectedLinkId) return "#111827";
+        if (highlightedLinkIds.size > 0) return highlightedLinkIds.has(edgeId(l)) ? (edgeTypeColor[l.type] || "#64748b") : "rgba(149, 163, 175, 0.13)";
+        return edgeTypeColor[l.type] || "#64748b";
       }
 
-      function fadedNodeColor() {
-        return "rgba(173, 184, 194, 0.18)";
+      function nodeColor(n) {
+        if (selectedNodeId && n.id === selectedNodeId) return "#111827";
+        if (highlightedNodeIds.size > 0 && !highlightedNodeIds.has(n.id)) return fadedNodeColor();
+        return baseNodeColor(n);
       }
 
-      function linkColor(link) {
-        if (selectedLinkId && edgeId(link) === selectedLinkId) {
-          return "#111827";
-        }
-        if (highlightedLinkIds.size > 0) {
-          return highlightedLinkIds.has(edgeId(link)) ? (edgeTypeColor[link.type] || "#64748b") : "rgba(149, 163, 175, 0.13)";
-        }
-        return edgeTypeColor[link.type] || "#64748b";
-      }
-
-      function nodeColor(node) {
-        if (selectedNodeId && node.id === selectedNodeId) {
-          return "#111827";
-        }
-        if (highlightedNodeIds.size > 0 && !highlightedNodeIds.has(node.id)) {
-          return fadedNodeColor();
-        }
-        return baseNodeColor(node);
-      }
-
-      function nodeSize(node) {
-        if (node.type === "project") {
-          return 14;
-        }
-        if (node.type === "file") {
-          return 9;
-        }
-        if (node.type === "class") {
-          return 7;
-        }
-        if (node.type === "module") {
-          return 6;
-        }
+      function nodeSize(n) {
+        if (n.type === "project") return 14;
+        if (n.type === "file") return 9;
+        if (n.type === "class") return 7;
+        if (n.type === "module") return 6;
         return 5;
       }
 
       function refreshVisualState() {
-        fg
-          .nodeColor(nodeColor)
-          .nodeVal(nodeSize)
-          .linkColor(linkColor)
-          .linkWidth((link) => {
-            if (selectedLinkId && edgeId(link) === selectedLinkId) {
-              return 3.6;
-            }
-            if (highlightedLinkIds.size > 0) {
-              return highlightedLinkIds.has(edgeId(link)) ? 2.6 : 0.5;
-            }
-            return link.type === "CONTAINS" ? 0.7 : 1.4;
+        fg.nodeColor(nodeColor).nodeVal(nodeSize).linkColor(linkColor)
+          .linkWidth(l => {
+            if (selectedLinkId && edgeId(l) === selectedLinkId) return 3.6;
+            if (highlightedLinkIds.size > 0) return highlightedLinkIds.has(edgeId(l)) ? 2.6 : 0.5;
+            return l.type === "CONTAINS" ? 0.7 : 1.4;
           })
-          .linkDirectionalParticles((link) => {
-            if (selectedLinkId && edgeId(link) === selectedLinkId) {
-              return 4;
-            }
-            return highlightedLinkIds.has(edgeId(link)) ? 2 : 0;
+          .linkDirectionalParticles(l => {
+            if (selectedLinkId && edgeId(l) === selectedLinkId) return 4;
+            return highlightedLinkIds.has(edgeId(l)) ? 2 : 0;
           })
-          .linkDirectionalParticleWidth((link) => (highlightedLinkIds.has(edgeId(link)) ? 2.2 : 0));
-
-        fg.refresh();
+          .linkDirectionalParticleWidth(l => highlightedLinkIds.has(edgeId(l)) ? 2.2 : 0);
       }
 
-      function escapeHtml(unsafe) {
-        return (unsafe || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-      }
-
-      function setSelectionInfo(value) {
-        if (!value) {
-          selectionNode.innerHTML = "Click a node or edge to inspect it.";
-          detailsDrawer.classList.add("closed");
-          return;
-        }
-        
-        detailsDrawer.classList.remove("closed");
-
-        if (value.kind === "edge") {
-          selectionNode.innerHTML = `<strong>Edge:</strong> ${escapeHtml(value.type)}
-<strong>From:</strong> ${escapeHtml(value.source.id || value.source)}
-<strong>To:</strong> ${escapeHtml(value.target.id || value.target)}
-
-<em>${escapeHtml(value.summary)}</em>`;
-          return;
-        }
-
-        if (value.kind === "node") {
-          let html = `<strong>Node:</strong> ${escapeHtml(value.name)}
-<strong>Type:</strong> ${escapeHtml(value.type)}
-<strong>File:</strong> ${escapeHtml(value.filePath)}`;
-
-          if (value.snippetRange) {
-             html += `\n<strong>Lines:</strong> ${escapeHtml(value.snippetRange)}`;
-          }
-
-          if (value.snippet) {
-            html += `\n\n<hr style="border-color: rgba(255,255,255,0.1); margin: 8px 0" />\n<strong>Code Snippet:</strong>\n\n${escapeHtml(value.snippet)}`;
-          }
-
-          selectionNode.innerHTML = html;
-        }
-      }
-
-      async function loadNodeDetails(node) {
-        try {
-          const response = await fetch(`/api/node-details?id=${encodeURIComponent(node.id)}`);
-          const details = await response.json();
-
-          if (!response.ok) {
-            setSelectionInfo({
-              kind: "node",
-              summary: summarizeNode(node),
-              error: details.message || details.error || "Could not load node details."
-            });
-            return;
-          }
-
-          const payload = {
-            kind: "node",
-            id: details.id,
-            type: details.type,
-            name: details.name,
-            filePath: details.filePath,
-            absoluteFilePath: details.absoluteFilePath || null,
-            line: details.line,
-            endLine: details.endLine,
-            snippetMode: details.snippetMode
-          };
-
-          if (details.previewReason) {
-            payload.previewReason = details.previewReason;
-          }
-
-          if (details.snippet) {
-            payload.snippetRange = `L${details.snippetStartLine}-L${details.snippetEndLine}`;
-            payload.snippet = details.snippet;
-          } else {
-            payload.snippet = "No snippet available for this node type.";
-          }
-
-          setSelectionInfo(payload);
-        } catch {
-          setSelectionInfo({
-            kind: "node",
-            id: node.id,
-            summary: summarizeNode(node),
-            error: "Could not load node details."
-          });
-        }
-      }
-
-      function centerNode(node) {
-        if (!node) {
-          return;
-        }
-        fg.centerAt(node.x, node.y, 300);
+      function centerNode(n) {
+        if (!n) return;
+        fg.centerAt(n.x, n.y, 300);
         fg.zoom(2.2, 300);
       }
 
       function updateGraphRenderer() {
-        if (!currentGraph || !fg) {
-          return;
-        }
-
+        if (!currentGraph || !fg) return;
         const filtered = getFilteredGraph(currentGraph);
         graphData = {
-          nodes: filtered.nodes.map((node) => ({ ...node })),
-          links: filtered.edges.map((edge) => ({
-            ...edge,
-            source: edge.from,
-            target: edge.to
-          }))
+          nodes: filtered.nodes.map(n => ({ ...n })),
+          links: filtered.edges.map(e => ({ ...e, source: e.from, target: e.to }))
         };
-
-        const nodeIds = new Set(graphData.nodes.map((node) => node.id));
-        if (selectedNodeId && !nodeIds.has(selectedNodeId)) {
-          clearHighlights();
-        }
-
+        const nodeIds = new Set(graphData.nodes.map(n => n.id));
+        if (selectedNodeId && !nodeIds.has(selectedNodeId)) clearHighlights();
         neighborsById = buildNeighbors(graphData.links);
         fg.graphData(graphData);
-
-        if (selectedNodeId && nodeIds.has(selectedNodeId)) {
-          applyNodeHighlight(selectedNodeId);
-        } else {
-          clearHighlights();
-        }
-
+        if (selectedNodeId && nodeIds.has(selectedNodeId)) applyNodeHighlight(selectedNodeId);
+        else clearHighlights();
         refreshVisualState();
       }
 
-      function hasRenderableGraph(graph) {
-        const nodeCount = graph?.nodes?.length || 0;
-        const edgeCount = graph?.edges?.length || 0;
-        return nodeCount > 0 && edgeCount > 0;
+      function hasRenderableGraph(g) {
+        return (g?.nodes?.length || 0) > 0 && (g?.edges?.length || 0) > 0;
       }
+
+      /* ════════════════════════════════════════
+         FORCE GRAPH INIT
+         ════════════════════════════════════════ */
 
       function initializeForceGraph() {
         if (!window.ForceGraph) {
-          setStatus("Graph renderer failed to load. Check internet access to unpkg.");
+          setStatus("Graph renderer failed to load.");
           return false;
         }
 
-        fg = window
-          .ForceGraph()(graphNode)
+        fg = window.ForceGraph()(graphNode)
           .backgroundColor("rgba(255,255,255,0)")
           .nodeRelSize(5)
           .d3AlphaDecay(0.03)
@@ -526,44 +454,44 @@
           .cooldownTicks(140)
           .linkDirectionalArrowLength(3)
           .linkDirectionalArrowRelPos(1)
+          .nodeCanvasObjectMode(() => "after")
           .nodeCanvasObject((node, ctx, globalScale) => {
-            if (globalScale < 1.0) {
-              return;
-            }
+            // Only show labels when zoomed in past threshold
+            if (globalScale < 1.2) return;
 
-            const size = nodeSize(node);
             const label = summarizeNode(node);
-            const textColor = "rgba(22, 38, 56, 0.9)";
-            const bgColor = "rgba(255, 255, 255, 0.76)";
-
-            // Make font size perfectly static ON SCREEN so nodes appear to grow relatively around it.
-            const fontSize = 12 / globalScale; 
+            const size = nodeSize(node);
+            // Fixed screen-size font → shrinks in graph-coords as you zoom in
+            const fontSize = 12 / globalScale;
 
             ctx.font = `${fontSize}px "IBM Plex Sans", sans-serif`;
-            const textWidth = ctx.measureText(label).width;
-            const padding = fontSize * 0.4;
+            const tw = ctx.measureText(label).width;
+            const pad = fontSize * 0.35;
 
-            ctx.fillStyle = bgColor;
-            ctx.fillRect(
-              node.x - textWidth / 2 - padding,
-              node.y + (size * 1.05),
-              textWidth + padding * 2,
-              fontSize + padding * 1.5
-            );
+            ctx.fillStyle = "rgba(255,255,255,0.78)";
+            ctx.fillRect(node.x - tw / 2 - pad, node.y + size * 1.1, tw + pad * 2, fontSize + pad * 2);
 
-            ctx.fillStyle = textColor;
-            ctx.fillText(label, node.x - textWidth / 2, node.y + (size * 1.05) + fontSize * 0.95);
+            ctx.fillStyle = "rgba(22,38,56,0.88)";
+            ctx.fillText(label, node.x - tw / 2, node.y + size * 1.1 + fontSize + pad * 0.3);
           })
-          .nodeLabel((node) => {
-            const label = summarizeNode(node);
-            return `<strong>${label}</strong><br/>Type: ${node.type}<br/>File: ${node.filePath || node.path || "-"}`;
+          .nodeLabel(n => {
+            const l = summarizeNode(n);
+            return `<strong>${l}</strong><br/>Type: ${n.type}<br/>File: ${n.filePath || n.path || "-"}`;
           })
-          .linkLabel((link) => summarizeEdge(link))
+          .linkLabel(l => summarizeEdge(l))
           .onNodeClick((node) => {
-            applyNodeHighlight(node.id);
-            refreshVisualState();
-            loadNodeDetails(node);
-            centerNode(node);
+            try {
+              console.log(`[Graph] Node clicked: ${node.id} (${node.type})`);
+              applyNodeHighlight(node.id);
+              console.log(`[Graph] Highlight applied, opening tab...`);
+              openNodeTab(node.id, summarizeNode(node));
+              console.log(`[Graph] Tab opened, refreshing visuals...`);
+              refreshVisualState();
+              centerNode(node);
+              console.log(`[Graph] Click handler complete`);
+            } catch (err) {
+              console.error(`[Graph] CRASH in onNodeClick:`, err);
+            }
           })
           .onLinkClick((link) => {
             selectedLinkId = edgeId(link);
@@ -571,144 +499,96 @@
             highlightedNodeIds = new Set();
             highlightedLinkIds = new Set([selectedLinkId]);
             refreshVisualState();
-            setSelectionInfo({
-              kind: "edge",
-              ...link,
-              summary: summarizeEdge(link)
-            });
           })
           .onBackgroundClick(() => {
             clearHighlights();
             refreshVisualState();
-            setSelectionInfo(null);
           });
 
-        const resizeObserver = new ResizeObserver((entries) => {
-          for (const entry of entries) {
-            const width = Math.max(400, Math.floor(entry.contentRect.width));
-            const height = Math.max(520, Math.floor(entry.contentRect.height));
-            fg.width(width).height(height);
+        const ro = new ResizeObserver((entries) => {
+          for (const e of entries) {
+            fg.width(Math.max(300, Math.floor(e.contentRect.width)))
+              .height(Math.max(200, Math.floor(e.contentRect.height)));
           }
         });
-        resizeObserver.observe(graphNode);
+        ro.observe(graphNode);
         return true;
       }
 
+      /* ════════════════════════════════════════
+         DATA LOADING
+         ════════════════════════════════════════ */
+
       async function loadHealth() {
         try {
-          const response = await fetch("/api/health");
-          const health = await response.json();
-          defaultRoot = health.defaultRoot || "";
+          const r = await fetch("/api/health");
+          const h = await r.json();
+          defaultRoot = h.defaultRoot || "";
           rootPathInput.value = defaultRoot;
-        } catch {
-          setStatus("Could not load health status.");
-        }
+        } catch { setStatus("Could not load health status."); }
       }
 
       async function loadGraph() {
         try {
-          const response = await fetch("/api/graph");
-          const graph = await response.json();
-          if (!response.ok) {
-            throw new Error(graph.message || "Could not load graph.");
-          }
-
-          if (!hasRenderableGraph(graph)) {
-            setStatus("Graph is empty. Triggering a rebuild...");
-            await rebuildGraph();
-            return;
-          }
-
-          currentGraph = graph;
-          setStats(graph.summary || {});
-          
-          if (graph.githubMeta) {
-            graphTitle.textContent = `${graph.githubMeta.owner}/${graph.githubMeta.repo}`;
-          } else {
-            graphTitle.textContent = graph.rootPath?.split("/").filter(Boolean).at(-1) || "Bundled sample codebase";
-          }
-          
-          graphMeta.textContent = graph.generatedAt
-            ? `Generated ${new Date(graph.generatedAt).toLocaleString()}`
-            : `Loaded from ${graph.source || "memory"}`;
-          setStatus(`Loaded ${graph.source || "memory"} graph.`);
+          const r = await fetch("/api/graph");
+          const g = await r.json();
+          if (!r.ok) throw new Error(g.message || "Could not load graph.");
+          if (!hasRenderableGraph(g)) { setStatus("Graph is empty. Triggering a rebuild..."); await rebuildGraph(); return; }
+          currentGraph = g;
+          setStats(g.summary || {});
+          graphTitle.textContent = g.githubMeta
+            ? `${g.githubMeta.owner}/${g.githubMeta.repo}`
+            : g.rootPath?.split("/").filter(Boolean).at(-1) || "Bundled sample codebase";
+          graphMeta.textContent = g.generatedAt
+            ? `Generated ${new Date(g.generatedAt).toLocaleString()}`
+            : `Loaded from ${g.source || "memory"}`;
+          setStatus(`Loaded ${g.source || "memory"} graph.`);
           updateGraphRenderer();
-        } catch {
-          await rebuildGraph();
-        }
+        } catch { await rebuildGraph(); }
       }
 
       async function analyzeGithubRepo() {
         const url = githubUrlInput.value.trim();
-        if (!url) {
-          setStatus("Please enter a GitHub URL.");
-          return;
-        }
-
+        if (!url) { setStatus("Please enter a GitHub URL."); return; }
         setStatus(`Cloning & Analyzing ${url}... Please wait.`);
         try {
-          const response = await fetch("/api/analyze-github", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
+          const r = await fetch("/api/analyze-github", {
+            method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ url })
           });
-
-          const graph = await response.json();
-          if (!response.ok) {
-            setStatus(graph.message || graph.error || "GitHub analysis failed.");
-            return;
-          }
-
-          if (!hasRenderableGraph(graph)) {
-            setStatus("Analysis completed but graph is empty.");
-            return;
-          }
-
-          currentGraph = graph;
-          setStats(graph.summary || {});
-          
-          graphTitle.textContent = graph.githubMeta 
-            ? `${graph.githubMeta.owner}/${graph.githubMeta.repo}`
-            : graph.rootPath?.split("/").filter(Boolean).at(-1) || "Codebase";
-            
-          graphMeta.textContent = `Generated ${new Date(graph.generatedAt).toLocaleString()} (Ephemeral)`;
+          const g = await r.json();
+          if (!r.ok) { setStatus(g.message || g.error || "GitHub analysis failed."); return; }
+          if (!hasRenderableGraph(g)) { setStatus("Analysis completed but graph is empty."); return; }
+          currentGraph = g;
+          setStats(g.summary || {});
+          graphTitle.textContent = g.githubMeta ? `${g.githubMeta.owner}/${g.githubMeta.repo}` : "Codebase";
+          graphMeta.textContent = `Generated ${new Date(g.generatedAt).toLocaleString()} (Ephemeral)`;
           setStatus("GitHub Graph rebuilt.");
+          // Clear old tabs since it's a new codebase
+          openTabs = []; activeTabId = null; renderTabs(); renderActiveContent();
           updateGraphRenderer();
-        } catch {
-          setStatus("Could not analyze GitHub repo. Check network or url.");
-        }
+        } catch { setStatus("Could not analyze GitHub repo. Check network or url."); }
       }
 
       async function rebuildGraph() {
         setStatus("Rebuilding graph from sample codebase...");
         try {
-          const response = await fetch("/api/analyze", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
+          const r = await fetch("/api/analyze", {
+            method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ rootPath: defaultRoot })
           });
-
-          const graph = await response.json();
-          if (!response.ok) {
-            setStatus(graph.message || "Graph rebuild failed.");
-            return;
-          }
-
-          if (!hasRenderableGraph(graph)) {
-            setStatus("Rebuild completed but graph is still empty. Verify TARGET_CODEBASE and repo contents.");
-            return;
-          }
-
-          currentGraph = graph;
-          setStats(graph.summary || {});
-          graphMeta.textContent = `Generated ${new Date(graph.generatedAt).toLocaleString()}`;
+          const g = await r.json();
+          if (!r.ok) { setStatus(g.message || "Graph rebuild failed."); return; }
+          if (!hasRenderableGraph(g)) { setStatus("Rebuild done but graph empty."); return; }
+          currentGraph = g;
+          setStats(g.summary || {});
+          graphMeta.textContent = `Generated ${new Date(g.generatedAt).toLocaleString()}`;
           setStatus("Graph rebuilt.");
           updateGraphRenderer();
-        } catch {
-          setStatus("Could not rebuild graph. Check server and Neo4j connection.");
-        }
+        } catch { setStatus("Could not rebuild graph. Check server and Neo4j connection."); }
       }
 
+      /* ── Event listeners ── */
       searchInput.addEventListener("input", updateGraphRenderer);
       edgeFilter.addEventListener("change", updateGraphRenderer);
       densityRange.addEventListener("input", () => {
@@ -717,12 +597,54 @@
       });
       refreshButton.addEventListener("click", rebuildGraph);
       githubAnalyzeButton.addEventListener("click", analyzeGithubRepo);
-      detailsCloseBtn.addEventListener("click", () => {
-        setSelectionInfo(null);
-        clearHighlights();
-        refreshVisualState();
+
+      /* ── Drawer toggle ── */
+      let drawerHeight = 280;
+
+      function setDrawerOpen(open) {
+        if (open) {
+          codeDrawerEl.classList.remove("collapsed");
+          codeDrawerEl.style.height = drawerHeight + "px";
+          drawerToggleBtn.textContent = "▼ Collapse";
+        } else {
+          codeDrawerEl.classList.add("collapsed");
+          codeDrawerEl.style.height = "";
+          drawerToggleBtn.textContent = "▲ Open";
+        }
+      }
+
+      drawerToggleBtn.addEventListener("click", () => {
+        setDrawerOpen(codeDrawerEl.classList.contains("collapsed"));
       });
 
+      /* ── Drawer drag-to-resize ── */
+      let isDragging = false;
+      drawerHandleEl.addEventListener("mousedown", (e) => {
+        if (e.target === drawerToggleBtn) return; // don't drag when clicking button
+        isDragging = true;
+        document.body.style.cursor = "ns-resize";
+        document.body.style.userSelect = "none";
+      });
+      window.addEventListener("mousemove", (e) => {
+        if (!isDragging) return;
+        const parentRect = codeDrawerEl.parentElement.getBoundingClientRect();
+        const newHeight = parentRect.bottom - e.clientY;
+        drawerHeight = Math.max(100, Math.min(newHeight, parentRect.height - 80));
+        codeDrawerEl.style.height = drawerHeight + "px";
+        codeDrawerEl.classList.remove("collapsed");
+        drawerToggleBtn.textContent = "▼ Collapse";
+      });
+      window.addEventListener("mouseup", () => {
+        if (isDragging) {
+          isDragging = false;
+          document.body.style.cursor = "";
+          document.body.style.userSelect = "";
+        }
+      });
+
+      /* Auto-expand handled inside openNodeTab */
+
+      /* ── Boot ── */
       if (initializeForceGraph()) {
         await loadHealth();
         await loadGraph();
