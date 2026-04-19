@@ -36,13 +36,7 @@
           <p class="hint" style="font-size:0.75rem; line-height:1.4; margin:0">
             ⚠️ Only public repositories are supported. By analyzing a repo, you grant permission for us to temporarily clone and process its source code on our servers. Code is deleted immediately after analysis.
           </p>
-          <div style="margin: 0.6rem 0; border-bottom: 1px solid rgba(0,0,0,0.1)"></div>
-          <label for="rootPath">Local codebase</label>
-          <input id="rootPath" type="text" readonly />
-          <div class="button-row single">
-            <button type="button" id="refresh-button">Rebuild local graph</button>
-          </div>
-          <p id="status" class="status">Loading codebase graph...</p>
+          <p id="status" class="status">Paste a GitHub URL above to get started.</p>
         </div>
 
         <div class="panel stats">
@@ -87,7 +81,7 @@
         <div class="canvas-header">
           <div>
             <p class="eyebrow">Graph View</p>
-            <h2 id="graphTitle">Bundled sample codebase</h2>
+            <h2 id="graphTitle">No repo selected</h2>
           </div>
           <p id="graphMeta" class="graph-meta">Preparing graph...</p>
         </div>
@@ -113,8 +107,6 @@
       /* ── DOM refs ── */
       const githubUrlInput = document.getElementById("githubUrl");
       const githubAnalyzeButton = document.getElementById("github-analyze-button");
-      const rootPathInput = document.getElementById("rootPath");
-      const refreshButton = document.getElementById("refresh-button");
       const statusNode = document.getElementById("status");
       const fileCountNode = document.getElementById("fileCount");
       const entityCountNode = document.getElementById("entityCount");
@@ -563,8 +555,7 @@
           const r = await fetch("/api/health");
           const h = await r.json();
           defaultRoot = h.defaultRoot || "";
-          rootPathInput.value = defaultRoot;
-        } catch { setStatus("Could not load health status."); }
+        } catch { setStatus("Could not connect to server."); }
       }
 
       async function loadGraph() {
@@ -572,18 +563,27 @@
           const r = await fetch("/api/graph");
           const g = await r.json();
           if (!r.ok) throw new Error(g.message || "Could not load graph.");
-          if (!hasRenderableGraph(g)) { setStatus("Graph is empty. Triggering a rebuild..."); await rebuildGraph(); return; }
+          if (!hasRenderableGraph(g)) {
+            graphTitle.textContent = "No repo selected";
+            graphMeta.textContent = "";
+            setStatus("Paste a GitHub URL to analyze a repository.");
+            return;
+          }
           currentGraph = g;
           setStats(g.summary || {});
           graphTitle.textContent = g.githubMeta
             ? `${g.githubMeta.owner}/${g.githubMeta.repo}`
-            : g.rootPath?.split("/").filter(Boolean).at(-1) || "Bundled sample codebase";
+            : g.rootPath?.split("/").filter(Boolean).at(-1) || "Analyzed codebase";
           graphMeta.textContent = g.generatedAt
             ? `Generated ${new Date(g.generatedAt).toLocaleString()}`
             : `Loaded from ${g.source || "memory"}`;
           setStatus(`Loaded ${g.source || "memory"} graph.`);
           updateGraphRenderer();
-        } catch { await rebuildGraph(); }
+        } catch {
+          graphTitle.textContent = "No repo selected";
+          graphMeta.textContent = "";
+          setStatus("Paste a GitHub URL to analyze a repository.");
+        }
       }
 
       async function analyzeGithubRepo() {
@@ -634,7 +634,6 @@
         densityValue.textContent = `Showing up to ${densityRange.value} dependency edges.`;
         updateGraphRenderer();
       });
-      refreshButton.addEventListener("click", rebuildGraph);
       githubAnalyzeButton.addEventListener("click", analyzeGithubRepo);
 
       /* ── Drawer toggle ── */
