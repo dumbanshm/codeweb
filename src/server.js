@@ -11,7 +11,7 @@ import { checkNeo4jConnection, closeNeo4j, isNeo4jConfigured, loadEnvFromFile, r
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
-const sampleCodebasePath = path.join(projectRoot, "sample codebase");
+
 const MAX_PORT_ATTEMPTS = 20;
 
 await loadEnvFromFile(path.join(projectRoot, ".env"));
@@ -44,12 +44,8 @@ function sanitizeEnvPath(value) {
 
 function resolveCodebasePath(rawPath) {
   const sanitized = sanitizeEnvPath(rawPath);
-  if (!sanitized) {
-    return sampleCodebasePath;
-  }
-  if (path.isAbsolute(sanitized)) {
-    return sanitized;
-  }
+  if (!sanitized) return null;
+  if (path.isAbsolute(sanitized)) return sanitized;
   return path.resolve(projectRoot, sanitized);
 }
 
@@ -59,20 +55,14 @@ function hasGraphData(graph) {
   return nodeCount > 0 && edgeCount > 0;
 }
 
-async function getDefaultGraph() {
-  const defaultRoot = resolveCodebasePath(process.env.TARGET_CODEBASE);
-  await fs.access(defaultRoot);
-
-  if (lastGraph.nodes.length > 0 && lastGraph.rootPath === defaultRoot) {
-    return lastGraph;
-  }
-
-  const graph = await analyzeCodebase(defaultRoot);
-  lastPersistence = await writeGraph(graph);
-  lastGraph = graph;
-  startupError = null;
-  return graph;
-}
+const emptyGraph = {
+  rootPath: null,
+  githubMeta: null,
+  generatedAt: null,
+  summary: { fileCount: 0, entityCount: 0, moduleCount: 0, edgeCount: 0 },
+  nodes: [],
+  edges: []
+};
 
 async function getGraphSnapshot() {
   if (lastGraph.nodes.length > 0) {
@@ -84,7 +74,7 @@ async function getGraphSnapshot() {
     return storedGraph;
   }
 
-  return await getDefaultGraph();
+  return emptyGraph;
 }
 
 function clampLine(value, min, max) {
@@ -242,44 +232,24 @@ app.post("/api/analyze-github", async (req, res) => {
 
 app.get("/api/graph", async (_req, res) => {
   try {
+    // Check Neo4j first
     const storedGraph = await readGraph();
     if (storedGraph && hasGraphData(storedGraph)) {
-      res.json({
-        source: "neo4j",
-        ...storedGraph
-      });
+      res.json({ source: "neo4j", ...storedGraph });
       return;
     }
 
-    if (lastGraph.nodes.length === 0 || !hasGraphData(lastGraph)) {
-      const graph = await getDefaultGraph();
-      res.json({
-        source: "generated",
-        ...graph
-      });
+    // Check in-memory graph (from a previous GitHub analysis this session)
+    if (lastGraph.nodes.length > 0 && hasGraphData(lastGraph)) {
+      res.json({ source: "memory", ...lastGraph });
       return;
     }
 
-    res.json({
-      source: "memory",
-      ...lastGraph
-    });
+    // No graph available — return empty state
+    res.json({ source: "none", ...emptyGraph });
   } catch (error) {
     startupError = error instanceof Error ? error.message : String(error);
-    try {
-      const graph = await getDefaultGraph();
-      res.json({
-        source: "generated-fallback",
-        ...graph,
-        warning: startupError
-      });
-    } catch (fallbackError) {
-      startupError = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-      res.status(500).json({
-        error: "Could not load graph",
-        message: startupError
-      });
-    }
+    res.json({ source: "none", ...emptyGraph, warning: startupError });
   }
 });
 
@@ -418,10 +388,7 @@ async function startServerWithPortFallback(basePort) {
 
 const server = await startServerWithPortFallback(port);
 
-getDefaultGraph().catch((error) => {
-  startupError = error instanceof Error ? error.message : String(error);
-  console.error("Initial sample analysis failed:", error);
-});
+// Startup analysis removed — graph populates on demand
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, async () => {
