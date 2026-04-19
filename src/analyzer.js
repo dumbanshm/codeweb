@@ -314,6 +314,9 @@ function parseJavaScriptStructure(content, relativePath, language) {
   return { definitions, contextsByLine };
 }
 
+// FIX 1: PHP brace tracking rewritten — count braces FIRST, pop scope AFTER,
+// then run class/function regex. This prevents one-liner classes like
+// `class Foo { }` from being immediately evicted from the scope stack.
 function parsePHPStructure(content, relativePath, language) {
   const lines = content.split("\n");
   const definitions = [];
@@ -331,18 +334,17 @@ function parsePHPStructure(content, relativePath, language) {
       continue;
     }
 
-    // Track brace depth for scope
-    for (const ch of line) {
-      if (ch === "{") braceDepth++;
-      if (ch === "}") {
-        braceDepth--;
-        while (scopeStack.length > 0 && braceDepth <= scopeStack[scopeStack.length - 1].depth) {
-          scopeStack.pop();
-        }
-      }
-    }
+    // Count net brace change for this line WITHOUT popping scope mid-line.
+    // We record the depth *before* this line's braces take effect so that
+    // any definition on this line gets pushed at the right depth.
+    const openBraces = (line.match(/\{/g) || []).length;
+    const closeBraces = (line.match(/\}/g) || []).length;
+    const netChange = openBraces - closeBraces;
 
-    // Class: class Foo / abstract class Foo / final class Foo
+    // Pop scopes for any closing braces on this line, but only after we've
+    // used the pre-line depth to detect the definition (further down).
+    // We'll apply the net change and pop AFTER parsing definitions below.
+
     const classMatch = line.match(/^\s*(?:abstract\s+|final\s+)?class\s+([A-Za-z_]\w*)/);
     if (classMatch) {
       const name = classMatch[1];
@@ -352,12 +354,18 @@ function parsePHPStructure(content, relativePath, language) {
         language, filePath: relativePath, line: lineNumber, parent: relativePath
       };
       definitions.push(definition);
-      scopeStack.push({ kind: "class", name, depth: braceDepth - 1, definition });
+      // Push at current depth; the opening brace on this same line will be
+      // accounted for when we apply netChange below.
+      scopeStack.push({ kind: "class", name, depth: braceDepth, definition });
+      braceDepth += netChange;
+      // Pop any scopes that the closing braces on this line may have closed.
+      while (scopeStack.length > 0 && braceDepth <= scopeStack[scopeStack.length - 1].depth) {
+        scopeStack.pop();
+      }
       contextsByLine[lineNumber] = definition.id;
       continue;
     }
 
-    // Function/method: function foo(...) or public function foo(...)
     const fnMatch = line.match(/^\s*(?:public|protected|private|static|\s)*function\s+([A-Za-z_]\w*)\s*\(/);
     if (fnMatch) {
       const fnName = fnMatch[1];
@@ -371,9 +379,19 @@ function parsePHPStructure(content, relativePath, language) {
         language, filePath: relativePath, line: lineNumber, parent
       };
       definitions.push(definition);
-      scopeStack.push({ kind: type, name: qualifiedName, depth: braceDepth - 1, definition });
+      scopeStack.push({ kind: type, name: qualifiedName, depth: braceDepth, definition });
+      braceDepth += netChange;
+      while (scopeStack.length > 0 && braceDepth <= scopeStack[scopeStack.length - 1].depth) {
+        scopeStack.pop();
+      }
       contextsByLine[lineNumber] = definition.id;
       continue;
+    }
+
+    // No definition on this line — just apply brace changes and pop.
+    braceDepth += netChange;
+    while (scopeStack.length > 0 && braceDepth <= scopeStack[scopeStack.length - 1].depth) {
+      scopeStack.pop();
     }
 
     const active = [...scopeStack].reverse().find(s => s.kind === "function" || s.kind === "method");
@@ -389,7 +407,6 @@ function parseSQLStructure(content, relativePath, language) {
   const definitions = [];
   const contextsByLine = new Array(lines.length + 1).fill(null);
 
-  // Match: CREATE [OR REPLACE] FUNCTION/PROCEDURE/VIEW/TABLE name
   const createRegex = /^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:TEMP(?:ORARY)?\s+)?(FUNCTION|PROCEDURE|VIEW|TABLE|TRIGGER)\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:["\[`]?([\w.]+)["\]`]?)/gmi;
 
   for (const match of content.matchAll(createRegex)) {
@@ -409,7 +426,6 @@ function parseSQLStructure(content, relativePath, language) {
     definitions.push(definition);
   }
 
-  // Set context lines based on definitions
   for (let i = 0; i < definitions.length; i++) {
     const def = definitions[i];
     const end = definitions[i + 1]?.line ? definitions[i + 1].line - 1 : lines.length;
@@ -495,20 +511,16 @@ function parseImports(content, relativePath, language, filesByRelativePath) {
       for (const mod of modules) addImport(mod, line);
     }
   } else if (language === "php") {
-    // use Namespace\ClassName;
     for (const match of content.matchAll(/^\s*use\s+([A-Za-z0-9_\\]+)/gm)) {
       const line = content.slice(0, match.index).split("\n").length;
       addImport(match[1].replace(/\\/g, "/"), line);
     }
-    // require, include, require_once, include_once
     for (const match of content.matchAll(/\b(?:require|include)(?:_once)?\s*[\(]?\s*['"](.+?)['"]/gm)) {
       const line = content.slice(0, match.index).split("\n").length;
       addImport(match[1], line);
     }
   } else if (language === "sql") {
-    // SQL doesn't have traditional imports, but we can detect references
-    // to other objects via FROM/JOIN clauses (basic)
-    // Skip — SQL imports are not meaningful in the same way
+    // SQL has no meaningful imports
   } else {
     for (const match of content.matchAll(/^\s*import\s+.+?\s+from\s+['"](.+?)['"]/gm)) {
       const line = content.slice(0, match.index).split("\n").length;
@@ -527,9 +539,48 @@ function parseImports(content, relativePath, language, filesByRelativePath) {
   return { imports, moduleNodes };
 }
 
-function parseCalls(content, relativePath, contextsByLine, definitionIndex) {
+// FIX 2: O(n²) line lookup replaced with a precomputed offset table.
+// buildLineOffsetTable runs once per file in O(n); lookupLine is then O(log n).
+function buildLineOffsetTable(content) {
+  const offsets = [0]; // offsets[i] = char index where line i+1 starts
+  for (let i = 0; i < content.length; i++) {
+    if (content[i] === "\n") {
+      offsets.push(i + 1);
+    }
+  }
+  return offsets;
+}
+
+function lookupLine(offsets, charIndex) {
+  // Binary search for the largest offset <= charIndex
+  let lo = 0;
+  let hi = offsets.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (offsets[mid] <= charIndex) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return lo + 1; // 1-indexed
+}
+
+// FIX 3: Same-file definitions are preferred; cross-file matches are only
+// included when the caller's file actually imports the target's file.
+// This kills the false multi-file call edges from name collisions.
+function parseCalls(content, relativePath, contextsByLine, definitionIndex, importEdges) {
   const edges = [];
   const seen = new Set();
+
+  // Build a set of files that this file imports, for cross-file call gating.
+  const importedFiles = new Set(
+    importEdges
+      .filter(e => e.from === relativePath && e.resolved)
+      .map(e => e.to)
+  );
+
+  const offsets = buildLineOffsetTable(content);
 
   for (const match of content.matchAll(/\b([A-Za-z_$][\w$]*)\s*\(/g)) {
     const name = match[1];
@@ -537,13 +588,20 @@ function parseCalls(content, relativePath, contextsByLine, definitionIndex) {
       continue;
     }
 
-    const targets = definitionIndex.get(name) || [];
-    if (targets.length === 0) {
+    const allTargets = definitionIndex.get(name) || [];
+    if (allTargets.length === 0) {
       continue;
     }
 
-    const line = content.slice(0, match.index).split("\n").length;
+    const line = lookupLine(offsets, match.index);
     const callerId = contextsByLine[line] || relativePath;
+
+    // Prefer same-file definitions. Only fall back to imported files if there's
+    // no local match, and only if this file actually imports that file.
+    const sameFileTargets = allTargets.filter(t => t.filePath === relativePath);
+    const targets = sameFileTargets.length > 0
+      ? sameFileTargets
+      : allTargets.filter(t => importedFiles.has(t.filePath));
 
     for (const target of targets) {
       if (target.id === callerId) {
@@ -661,8 +719,9 @@ export async function analyzeCodebase(rootPath) {
 
   moduleNodes.push(...moduleNodeIndex.values());
 
+  // Pass importEdges into parseCalls so it can gate cross-file call resolution.
   for (const file of fileContents) {
-    callEdges.push(...parseCalls(file.content, file.relativePath, file.contextsByLine, definitionIndex));
+    callEdges.push(...parseCalls(file.content, file.relativePath, file.contextsByLine, definitionIndex, importEdges));
   }
 
   const nodes = [projectNode, ...fileNodes, ...entityNodes, ...moduleNodes];
