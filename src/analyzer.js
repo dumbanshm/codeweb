@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-const SUPPORTED_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx", ".py"]);
+const SUPPORTED_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx", ".py", ".php", ".sql"]);
 const IGNORED_DIRECTORIES = new Set([
   ".git",
   "node_modules",
@@ -71,12 +71,10 @@ async function walkDirectory(rootPath, currentPath = rootPath, files = []) {
 
 function detectLanguage(filePath) {
   const extension = path.extname(filePath);
-  if (extension === ".py") {
-    return "python";
-  }
-  if (extension === ".ts" || extension === ".tsx") {
-    return "typescript";
-  }
+  if (extension === ".py") return "python";
+  if (extension === ".ts" || extension === ".tsx") return "typescript";
+  if (extension === ".php") return "php";
+  if (extension === ".sql") return "sql";
   return "javascript";
 }
 
@@ -316,11 +314,121 @@ function parseJavaScriptStructure(content, relativePath, language) {
   return { definitions, contextsByLine };
 }
 
+function parsePHPStructure(content, relativePath, language) {
+  const lines = content.split("\n");
+  const definitions = [];
+  const contextsByLine = new Array(lines.length + 1).fill(null);
+  const scopeStack = [];
+  let braceDepth = 0;
+
+  for (let lineNumber = 1; lineNumber <= lines.length; lineNumber += 1) {
+    const line = lines[lineNumber - 1];
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith("//") || trimmed.startsWith("#") || trimmed.startsWith("/*") || trimmed.startsWith("*")) {
+      const active = [...scopeStack].reverse().find(s => s.kind === "function" || s.kind === "method");
+      contextsByLine[lineNumber] = active?.definition.id || null;
+      continue;
+    }
+
+    // Track brace depth for scope
+    for (const ch of line) {
+      if (ch === "{") braceDepth++;
+      if (ch === "}") {
+        braceDepth--;
+        while (scopeStack.length > 0 && braceDepth <= scopeStack[scopeStack.length - 1].depth) {
+          scopeStack.pop();
+        }
+      }
+    }
+
+    // Class: class Foo / abstract class Foo / final class Foo
+    const classMatch = line.match(/^\s*(?:abstract\s+|final\s+)?class\s+([A-Za-z_]\w*)/);
+    if (classMatch) {
+      const name = classMatch[1];
+      const definition = {
+        id: toEntityId(relativePath, name),
+        name, qualifiedName: name, type: "class",
+        language, filePath: relativePath, line: lineNumber, parent: relativePath
+      };
+      definitions.push(definition);
+      scopeStack.push({ kind: "class", name, depth: braceDepth - 1, definition });
+      contextsByLine[lineNumber] = definition.id;
+      continue;
+    }
+
+    // Function/method: function foo(...) or public function foo(...)
+    const fnMatch = line.match(/^\s*(?:public|protected|private|static|\s)*function\s+([A-Za-z_]\w*)\s*\(/);
+    if (fnMatch) {
+      const fnName = fnMatch[1];
+      const parentClass = [...scopeStack].reverse().find(s => s.kind === "class");
+      const qualifiedName = parentClass ? `${parentClass.name}.${fnName}` : fnName;
+      const type = parentClass ? "method" : "function";
+      const parent = parentClass ? parentClass.definition.id : relativePath;
+      const definition = {
+        id: toEntityId(relativePath, qualifiedName),
+        name: fnName, qualifiedName, type,
+        language, filePath: relativePath, line: lineNumber, parent
+      };
+      definitions.push(definition);
+      scopeStack.push({ kind: type, name: qualifiedName, depth: braceDepth - 1, definition });
+      contextsByLine[lineNumber] = definition.id;
+      continue;
+    }
+
+    const active = [...scopeStack].reverse().find(s => s.kind === "function" || s.kind === "method");
+    contextsByLine[lineNumber] = active?.definition.id || null;
+  }
+
+  finalizeDefinitionEndLines(definitions, lines.length);
+  return { definitions, contextsByLine };
+}
+
+function parseSQLStructure(content, relativePath, language) {
+  const lines = content.split("\n");
+  const definitions = [];
+  const contextsByLine = new Array(lines.length + 1).fill(null);
+
+  // Match: CREATE [OR REPLACE] FUNCTION/PROCEDURE/VIEW/TABLE name
+  const createRegex = /^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:TEMP(?:ORARY)?\s+)?(FUNCTION|PROCEDURE|VIEW|TABLE|TRIGGER)\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:["\[`]?([\w.]+)["\]`]?)/gmi;
+
+  for (const match of content.matchAll(createRegex)) {
+    const kind = match[1].toUpperCase();
+    const name = match[2];
+    const line = content.slice(0, match.index).split("\n").length;
+
+    let type = "function";
+    if (kind === "VIEW" || kind === "TABLE" || kind === "TRIGGER") type = "class";
+    if (kind === "PROCEDURE") type = "function";
+
+    const definition = {
+      id: toEntityId(relativePath, name),
+      name, qualifiedName: name, type,
+      language, filePath: relativePath, line, parent: relativePath
+    };
+    definitions.push(definition);
+  }
+
+  // Set context lines based on definitions
+  for (let i = 0; i < definitions.length; i++) {
+    const def = definitions[i];
+    const end = definitions[i + 1]?.line ? definitions[i + 1].line - 1 : lines.length;
+    for (let ln = def.line; ln <= end; ln++) {
+      contextsByLine[ln] = def.id;
+    }
+  }
+
+  finalizeDefinitionEndLines(definitions, lines.length);
+  return { definitions, contextsByLine };
+}
+
 function parseStructure(content, absolutePath, relativePath) {
   const language = detectLanguage(absolutePath);
-  const structure = language === "python"
-    ? parsePythonStructure(content, relativePath, language)
-    : parseJavaScriptStructure(content, relativePath, language);
+  let structure;
+  if (language === "python") structure = parsePythonStructure(content, relativePath, language);
+  else if (language === "php") structure = parsePHPStructure(content, relativePath, language);
+  else if (language === "sql") structure = parseSQLStructure(content, relativePath, language);
+  else structure = parseJavaScriptStructure(content, relativePath, language);
 
   return {
     language,
@@ -381,28 +489,35 @@ function parseImports(content, relativePath, language, filesByRelativePath) {
       const line = content.slice(0, match.index).split("\n").length;
       addImport(match[1], line);
     }
-
     for (const match of content.matchAll(/^\s*import\s+([A-Za-z0-9_.,\s]+)$/gm)) {
       const line = content.slice(0, match.index).split("\n").length;
-      const modules = match[1]
-        .split(",")
-        .map((moduleName) => moduleName.trim().split(/\s+as\s+/)[0])
-        .filter(Boolean);
-      for (const moduleName of modules) {
-        addImport(moduleName, line);
-      }
+      const modules = match[1].split(",").map(m => m.trim().split(/\s+as\s+/)[0]).filter(Boolean);
+      for (const mod of modules) addImport(mod, line);
     }
+  } else if (language === "php") {
+    // use Namespace\ClassName;
+    for (const match of content.matchAll(/^\s*use\s+([A-Za-z0-9_\\]+)/gm)) {
+      const line = content.slice(0, match.index).split("\n").length;
+      addImport(match[1].replace(/\\/g, "/"), line);
+    }
+    // require, include, require_once, include_once
+    for (const match of content.matchAll(/\b(?:require|include)(?:_once)?\s*[\(]?\s*['"](.+?)['"]/gm)) {
+      const line = content.slice(0, match.index).split("\n").length;
+      addImport(match[1], line);
+    }
+  } else if (language === "sql") {
+    // SQL doesn't have traditional imports, but we can detect references
+    // to other objects via FROM/JOIN clauses (basic)
+    // Skip — SQL imports are not meaningful in the same way
   } else {
     for (const match of content.matchAll(/^\s*import\s+.+?\s+from\s+['"](.+?)['"]/gm)) {
       const line = content.slice(0, match.index).split("\n").length;
       addImport(match[1], line);
     }
-
     for (const match of content.matchAll(/^\s*import\s+['"](.+?)['"]/gm)) {
       const line = content.slice(0, match.index).split("\n").length;
       addImport(match[1], line);
     }
-
     for (const match of content.matchAll(/^\s*const\s+.+?=\s*require\(['"](.+?)['"]\)/gm)) {
       const line = content.slice(0, match.index).split("\n").length;
       addImport(match[1], line);

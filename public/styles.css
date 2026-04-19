@@ -423,10 +423,27 @@ button {
   margin: 0;
   color: var(--drawer-text);
   font-size: 0.82rem;
-  line-height: 1.55;
-  white-space: pre-wrap;
-  word-break: break-word;
+  line-height: 1.6;
+  white-space: pre;
   font-family: inherit;
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+/* Override hljs background to blend with drawer */
+.code-drawer-content pre.hljs {
+  background: transparent !important;
+}
+
+.line-num {
+  color: #585b70;
+  user-select: none;
+  display: inline;
+}
+
+.line-sep {
+  color: #45475a;
+  user-select: none;
 }
 
 .code-drawer-empty {

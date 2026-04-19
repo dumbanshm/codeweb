@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CodeWeb – Dependency Graph Explorer</title>
     <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/catppuccin-mocha.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script src="https://unpkg.com/force-graph"></script>
     <script src="https://cdn.jsdelivr.net/npm/force-graph"></script>
   </head>
@@ -190,6 +192,21 @@
         }
       }
 
+      function getHljsLang(filePath) {
+        const ext = (filePath || '').split('.').pop().toLowerCase();
+        const map = {
+          py: 'python', js: 'javascript', ts: 'typescript', jsx: 'javascript',
+          tsx: 'typescript', java: 'java', rb: 'ruby', go: 'go', rs: 'rust',
+          c: 'c', cpp: 'cpp', h: 'c', hpp: 'cpp', cs: 'csharp',
+          html: 'xml', htm: 'xml', xml: 'xml', css: 'css', scss: 'scss',
+          json: 'json', yaml: 'yaml', yml: 'yaml', md: 'markdown',
+          sh: 'bash', bash: 'bash', zsh: 'bash', sql: 'sql',
+          swift: 'swift', kt: 'kotlin', php: 'php', r: 'r',
+          toml: 'ini', cfg: 'ini', ini: 'ini', dockerfile: 'dockerfile',
+        };
+        return map[ext] || null;
+      }
+
       function renderActiveContent() {
         const tab = openTabs.find(t => t.id === activeTabId);
         if (!tab) {
@@ -202,17 +219,36 @@
         }
 
         const startLine = tab.line || 1;
-        const codeLines = tab.content.split("\n");
+        const rawCode = tab.content;
+        const lang = getHljsLang(tab.filePath);
+
+        // Syntax-highlight the entire block first
+        let highlightedHtml;
+        try {
+          if (lang && window.hljs && hljs.getLanguage(lang)) {
+            highlightedHtml = hljs.highlight(rawCode, { language: lang }).value;
+          } else if (window.hljs) {
+            highlightedHtml = hljs.highlightAuto(rawCode).value;
+          } else {
+            highlightedHtml = escapeHtml(rawCode);
+          }
+        } catch {
+          highlightedHtml = escapeHtml(rawCode);
+        }
+
+        // Split highlighted HTML into lines and add line numbers
+        const codeLines = highlightedHtml.split("\n");
         const numberedLines = codeLines.map((line, i) => {
           const lineNum = startLine + i;
           const numStr = String(lineNum).padStart(4, " ");
-          return `<span style="color:#6c7086;user-select:none">${escapeHtml(numStr)} │ </span>${escapeHtml(line)}`;
+          return `<span class="line-num">${numStr}</span><span class="line-sep"> │ </span>${line}`;
         }).join("\n");
 
         const header = `<span style="color:#89b4fa">${escapeHtml(tab.filePath || tab.label)}</span>` +
+          (lang ? ` <span style="color:#a6e3a1">${lang}</span>` : '') +
           (tab.line ? ` <span style="color:#6c7086">L${tab.line}${tab.endLine ? '-L'+tab.endLine : ''}</span>` : '') +
           ` <span style="color:#585b70">(${codeLines.length} lines)</span>`;
-        codeContentEl.innerHTML = `<pre>${header}\n${"─".repeat(60)}\n${numberedLines}</pre>`;
+        codeContentEl.innerHTML = `<pre class="hljs">${header}\n${"─".repeat(60)}\n${numberedLines}</pre>`;
       }
 
       function activateTab(id) {
