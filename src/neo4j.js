@@ -177,6 +177,27 @@ export async function writeGraph(graph) {
   }
 }
 
+export async function clearGraph() {
+  const config = getNeo4jConfig();
+  const activeDriver = getDriver();
+
+  if (!config || !activeDriver) {
+    return false;
+  }
+
+  const session = activeDriver.session({ database: config.database });
+
+  try {
+    await session.run("MATCH (n) DETACH DELETE n");
+    return true;
+  } catch (error) {
+    console.error("Failed to clear Neo4j graph on startup:", error);
+    return false;
+  } finally {
+    await session.close();
+  }
+}
+
 export async function readGraph() {
   const config = getNeo4jConfig();
   const activeDriver = getDriver();

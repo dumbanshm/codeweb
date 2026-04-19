@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { simpleGit } from "simple-git";
 import { analyzeCodebase } from "./analyzer.js";
-import { checkNeo4jConnection, closeNeo4j, isNeo4jConfigured, loadEnvFromFile, readGraph, writeGraph } from "./neo4j.js";
+import { checkNeo4jConnection, closeNeo4j, isNeo4jConfigured, loadEnvFromFile, readGraph, writeGraph, clearGraph } from "./neo4j.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -385,6 +385,9 @@ async function startServerWithPortFallback(basePort) {
     tryListen();
   });
 }
+
+// Ensure clean slate on boot so old repos don't appear
+await clearGraph();
 
 const server = await startServerWithPortFallback(port);
 
