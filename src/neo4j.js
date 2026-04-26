@@ -106,7 +106,7 @@ function getDriver() {
   return driver;
 }
 
-export async function writeGraph(graph) {
+export async function writeGraph(graph, sessionId) {
   const config = getNeo4jConfig();
   const activeDriver = getDriver();
 
@@ -118,7 +118,8 @@ export async function writeGraph(graph) {
 
   try {
     await session.executeWrite(async (tx) => {
-      await tx.run("MATCH (n) DETACH DELETE n");
+      // Only delete nodes/edges for THIS session
+      await tx.run("MATCH (n {sessionId: $sessionId}) DETACH DELETE n", { sessionId });
 
       // Group nodes by specific label for batched insertion
       const nodesByLabel = {
@@ -139,9 +140,9 @@ export async function writeGraph(graph) {
         if (nodes.length === 0) continue;
         await tx.run(
           `UNWIND $nodes AS node
-           MERGE (n:GraphNode:${label} {id: node.id})
-           SET n += node`,
-          { nodes }
+           MERGE (n:GraphNode:${label} {id: node.id, sessionId: $sessionId})
+           SET n += node, n.sessionId = $sessionId`,
+          { nodes, sessionId }
         );
       }
 
@@ -157,11 +158,11 @@ export async function writeGraph(graph) {
         if (edges.length === 0) continue;
         await tx.run(
           `UNWIND $edges AS edge
-           MATCH (from {id: edge.from})
-           MATCH (to {id: edge.to})
-           MERGE (from)-[r:${type} {id: edge.id}]->(to)
-           SET r += edge`,
-          { edges }
+           MATCH (from {id: edge.from, sessionId: $sessionId})
+           MATCH (to {id: edge.to, sessionId: $sessionId})
+           MERGE (from)-[r:${type} {id: edge.id, sessionId: $sessionId}]->(to)
+           SET r += edge, r.sessionId = $sessionId`,
+          { edges, sessionId }
         );
       }
     });
@@ -177,7 +178,7 @@ export async function writeGraph(graph) {
   }
 }
 
-export async function clearGraph() {
+export async function clearGraph(sessionId = null) {
   const config = getNeo4jConfig();
   const activeDriver = getDriver();
 
@@ -188,7 +189,11 @@ export async function clearGraph() {
   const session = activeDriver.session({ database: config.database });
 
   try {
-    await session.run("MATCH (n) DETACH DELETE n");
+    if (sessionId) {
+      await session.run("MATCH (n {sessionId: $sessionId}) DETACH DELETE n", { sessionId });
+    } else {
+      await session.run("MATCH (n) DETACH DELETE n");
+    }
     return true;
   } catch (error) {
     console.error("Failed to clear Neo4j graph on startup:", error);
@@ -198,7 +203,7 @@ export async function clearGraph() {
   }
 }
 
-export async function readGraph() {
+export async function readGraph(sessionId) {
   const config = getNeo4jConfig();
   const activeDriver = getDriver();
 
@@ -210,10 +215,12 @@ export async function readGraph() {
 
   try {
     const nodesResult = await session.run(
-      "MATCH (n) RETURN properties(n) AS node ORDER BY coalesce(n.path, n.label, n.name)"
+      "MATCH (n {sessionId: $sessionId}) RETURN properties(n) AS node ORDER BY coalesce(n.path, n.label, n.name)",
+      { sessionId }
     );
     const edgesResult = await session.run(
-      "MATCH (a)-[r]->(b) RETURN properties(r) AS edge ORDER BY r.type, r.id"
+      "MATCH (a {sessionId: $sessionId})-[r {sessionId: $sessionId}]->(b {sessionId: $sessionId}) RETURN properties(r) AS edge ORDER BY r.type, r.id",
+      { sessionId }
     );
 
     const nodes = nodesResult.records.map((record) => record.get("node"));

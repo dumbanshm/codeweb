@@ -1,4 +1,5 @@
 import express from "express";
+import session from "express-session";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
@@ -19,17 +20,6 @@ await loadEnvFromFile(path.join(projectRoot, ".env"));
 const app = express();
 const port = Number(process.env.PORT || 3000);
 let activePort = port;
-
-let lastGraph = {
-  rootPath: null,
-  githubMeta: null,
-  generatedAt: null,
-  summary: { fileCount: 0, entityCount: 0, moduleCount: 0, edgeCount: 0 },
-  nodes: [],
-  edges: []
-};
-let startupError = null;
-let lastPersistence = null;
 
 const MAX_SNIPPET_CHARS = 500000;  // No practical limit — frontend handles scrolling
 const PREVIEW_LINE_WINDOW = 40;
@@ -64,12 +54,8 @@ const emptyGraph = {
   edges: []
 };
 
-async function getGraphSnapshot() {
-  if (lastGraph.nodes.length > 0) {
-    return lastGraph;
-  }
-
-  const storedGraph = await readGraph();
+async function getGraphSnapshot(sessionId) {
+  const storedGraph = await readGraph(sessionId);
   if (storedGraph?.nodes?.length) {
     return storedGraph;
   }
@@ -111,9 +97,15 @@ function buildSnippet(content, line, endLine) {
 }
 
 app.use(express.json());
+app.use(session({
+  secret: process.env.SESSION_SECRET || "codeweb-secret-key-123",
+  resave: false,
+  saveUninitialized: true,
+  cookie: { secure: process.env.NODE_ENV === "production" }
+}));
 app.use(express.static(path.join(projectRoot, "public")));
 
-app.get("/api/health", async (_req, res) => {
+app.get("/api/health", async (req, res) => {
   const resolvedDefaultRoot = resolveCodebasePath(process.env.TARGET_CODEBASE);
   let defaultRootExists = false;
 
@@ -125,6 +117,7 @@ app.get("/api/health", async (_req, res) => {
   }
 
   const neo4jStatus = await checkNeo4jConnection();
+  const graph = await getGraphSnapshot(req.sessionID);
 
   res.json({
     ok: true,
@@ -132,11 +125,10 @@ app.get("/api/health", async (_req, res) => {
     neo4jReachable: neo4jStatus.reachable,
     neo4jMessage: neo4jStatus.message || null,
     neo4jDatabase: neo4jStatus.database || null,
-    analyzedRoot: lastGraph.rootPath,
+    analyzedRoot: graph.rootPath,
     defaultRoot: resolvedDefaultRoot,
     defaultRootExists,
-    startupError,
-    lastPersistence
+    sessionId: req.sessionID
   });
 });
 
@@ -146,20 +138,17 @@ app.post("/api/analyze", async (req, res) => {
   try {
     await fs.access(requestedRoot);
     const graph = await analyzeCodebase(requestedRoot);
-    const persistence = await writeGraph(graph);
-    lastPersistence = persistence;
-    lastGraph = graph;
-    startupError = null;
+    const persistence = await writeGraph(graph, req.sessionID);
 
     res.json({
       ...graph,
       persistence
     });
   } catch (error) {
-    startupError = error instanceof Error ? error.message : String(error);
+    const message = error instanceof Error ? error.message : String(error);
     res.status(500).json({
       error: "Analysis failed",
-      message: startupError
+      message
     });
   }
 });
@@ -206,20 +195,17 @@ app.post("/api/analyze-github", async (req, res) => {
     
     graph.githubMeta = { owner, repo, branch };
     
-    const persistence = await writeGraph(graph);
-    lastPersistence = persistence;
-    lastGraph = graph;
-    startupError = null;
+    const persistence = await writeGraph(graph, req.sessionID);
 
     res.json({
       ...graph,
       persistence
     });
   } catch (error) {
-    startupError = error instanceof Error ? error.message : String(error);
+    const message = error instanceof Error ? error.message : String(error);
     res.status(500).json({
       error: "GitHub analysis failed",
-      message: startupError
+      message
     });
   } finally {
     try {
@@ -230,26 +216,19 @@ app.post("/api/analyze-github", async (req, res) => {
   }
 });
 
-app.get("/api/graph", async (_req, res) => {
+app.get("/api/graph", async (req, res) => {
   try {
-    // Check Neo4j first
-    const storedGraph = await readGraph();
+    const storedGraph = await readGraph(req.sessionID);
     if (storedGraph && hasGraphData(storedGraph)) {
       res.json({ source: "neo4j", ...storedGraph });
       return;
     }
 
-    // Check in-memory graph (from a previous GitHub analysis this session)
-    if (lastGraph.nodes.length > 0 && hasGraphData(lastGraph)) {
-      res.json({ source: "memory", ...lastGraph });
-      return;
-    }
-
-    // No graph available — return empty state
+    // No graph available for this session
     res.json({ source: "none", ...emptyGraph });
   } catch (error) {
-    startupError = error instanceof Error ? error.message : String(error);
-    res.json({ source: "none", ...emptyGraph, warning: startupError });
+    const message = error instanceof Error ? error.message : String(error);
+    res.json({ source: "none", ...emptyGraph, warning: message });
   }
 });
 
@@ -264,8 +243,8 @@ app.get("/api/node-details", async (req, res) => {
   }
 
   try {
-    const graph = await getGraphSnapshot();
-    console.log(`[node-details] Graph has ${graph.nodes?.length || 0} nodes, githubMeta: ${!!graph.githubMeta}, rootPath: ${graph.rootPath}`);
+    const graph = await getGraphSnapshot(req.sessionID);
+    console.log(`[node-details] Graph for session ${req.sessionID} has ${graph.nodes?.length || 0} nodes, githubMeta: ${!!graph.githubMeta}, rootPath: ${graph.rootPath}`);
 
     const node = (graph.nodes || []).find((candidate) => candidate.id === nodeId);
     if (!node) {
