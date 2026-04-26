@@ -130,10 +130,18 @@ export async function writeGraph(graph, sessionId) {
       };
 
       for (const node of graph.nodes) {
-        if (node.type === "project") nodesByLabel.Project.push(node);
-        else if (node.type === "file") nodesByLabel.File.push(node);
-        else if (node.type === "module") nodesByLabel.Module.push(node);
-        else nodesByLabel.Entity.push(node);
+        if (node.type === "project") {
+          // Persist graph-level metadata on the project node
+          if (graph.githubMeta) node.githubMetaJson = JSON.stringify(graph.githubMeta);
+          if (graph.generatedAt) node.generatedAt = graph.generatedAt;
+          nodesByLabel.Project.push(node);
+        } else if (node.type === "file") {
+          nodesByLabel.File.push(node);
+        } else if (node.type === "module") {
+          nodesByLabel.Module.push(node);
+        } else {
+          nodesByLabel.Entity.push(node);
+        }
       }
 
       for (const [label, nodes] of Object.entries(nodesByLabel)) {
@@ -227,9 +235,19 @@ export async function readGraph(sessionId) {
     const edges = edgesResult.records.map((record) => record.get("edge"));
     const projectNode = nodes.find((node) => node.type === "project");
 
+    let githubMeta = null;
+    if (projectNode?.githubMetaJson) {
+      try {
+        githubMeta = JSON.parse(projectNode.githubMetaJson);
+      } catch {
+        githubMeta = null;
+      }
+    }
+
     return {
       rootPath: projectNode?.path || null,
-      generatedAt: null,
+      githubMeta,
+      generatedAt: projectNode?.generatedAt || null,
       summary: summarizeGraph(nodes, edges),
       nodes,
       edges
