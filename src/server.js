@@ -20,6 +20,13 @@ const MAX_PORT_ATTEMPTS = 20;
 await loadEnvFromFile(path.join(projectRoot, ".env"));
 
 const app = express();
+// Render (and most PaaS hosts) terminate TLS at the edge and forward plain HTTP
+// internally. Without this, Express never sees the request as secure, so
+// express-session's `cookie.secure: true` (set below under NODE_ENV=production)
+// silently refuses to ever send the session cookie — every request looks like
+// a brand-new anonymous session, breaking anything that reads back a graph
+// that was just analyzed (code viewer, explain-node).
+app.set("trust proxy", 1);
 const port = Number(process.env.PORT || 3000);
 let activePort = port;
 
