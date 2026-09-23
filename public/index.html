@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CodeWeb – Dependency Graph Explorer</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" />
     <link rel="stylesheet" href="./styles.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/catppuccin-mocha.min.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
@@ -21,9 +25,9 @@
           <a class="github-btn" href="https://github.com/dumbanshm" target="_blank" rel="noopener noreferrer">GitHub</a>
           <p class="lede">Force-directed dependency graph with zoom, pan, drag, and focused neighborhood highlighting.</p>
           <div class="hero-badges">
+            <span class="badge badge-ai"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg> AI code explanations</span>
             <span class="badge">Neo4j-backed</span>
             <span class="badge">Force layout</span>
-            <span class="badge">Click to inspect</span>
           </div>
         </div>
 
@@ -92,8 +96,8 @@
         <!-- ── Permanent IDE code drawer ── -->
         <div class="code-drawer collapsed" id="code-drawer">
           <div class="code-drawer-handle" id="code-drawer-handle">
-            <span>CODE VIEWER — click a node to inspect source</span>
-            <button class="toggle-btn" id="drawer-toggle-btn">▲ Open</button>
+            <span class="drawer-label"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg> AI CODE EXPLANATIONS — click a node in the graph</span>
+            <button class="toggle-btn" id="drawer-toggle-btn"></button>
           </div>
           <div class="code-drawer-tabs" id="code-tabs"></div>
           <div class="code-drawer-content" id="code-content">
@@ -124,6 +128,17 @@
       const codeDrawerEl = document.getElementById("code-drawer");
       const drawerHandleEl = document.getElementById("code-drawer-handle");
       const drawerToggleBtn = document.getElementById("drawer-toggle-btn");
+
+      /* ── Icons (inline Lucide SVGs — no external icon-replace pass needed,
+         so they survive innerHTML re-renders without extra wiring) ── */
+      const icon = (path, extra = "") => `<svg class="icon ${extra}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+      const ICONS = {
+        sparkles: icon('<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>'),
+        chevronUp: icon('<path d="m18 15-6-6-6 6"/>'),
+        chevronDown: icon('<path d="m6 9 6 6 6-6"/>'),
+        x: icon('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
+        refresh: icon('<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M8 16H3v5"/>')
+      };
 
       /* ── Color maps ── */
       const nodeTypeColor = {
@@ -171,10 +186,11 @@
         for (const tab of openTabs) {
           const btn = document.createElement("button");
           btn.className = "code-tab" + (tab.id === activeTabId ? " active" : "");
-          btn.innerHTML = `${escapeHtml(tab.label)} <span class="code-tab-close" data-close="${tab.id}">&times;</span>`;
+          btn.innerHTML = `${escapeHtml(tab.label)} <span class="code-tab-close" data-close="${tab.id}">${ICONS.x}</span>`;
           btn.addEventListener("click", (e) => {
-            if (e.target.dataset.close) {
-              closeTab(e.target.dataset.close);
+            const closeTarget = e.target.closest("[data-close]");
+            if (closeTarget) {
+              closeTab(closeTarget.dataset.close);
             } else {
               activateTab(tab.id);
             }
@@ -202,23 +218,29 @@
         // Only offer explanations for nodes that actually have source (functions/classes/methods/files).
         if (!tab.filePath || tab.type === "module" || tab.type === "project") return "";
 
+        const label = `<div class="explain-label"><span class="explain-spark">${ICONS.sparkles}</span> AI Explanation`;
+
         if (tab.explaining) {
-          return `<div class="explain-section"><div class="explain-loading">✨ Asking the AI to explain this...</div></div>`;
+          return `<div class="explain-section explain-hero">
+            ${label}</div>
+            <div class="explain-loading"><span class="explain-spinner"></span> Reading the code and its callers...</div>
+          </div>`;
         }
         if (tab.explainError) {
-          return `<div class="explain-section">
+          return `<div class="explain-section explain-hero">
+            ${label}</div>
             <div class="explain-error">${escapeHtml(tab.explainError)}</div>
-            <button class="explain-btn" id="explain-btn" data-node="${escapeHtml(tab.id)}">Retry</button>
+            <button class="explain-btn" id="explain-btn" data-node="${escapeHtml(tab.id)}">${ICONS.refresh} Retry</button>
           </div>`;
         }
         if (tab.explanation) {
-          return `<div class="explain-section">
-            <div class="explain-label">✨ AI Explanation${tab.explanationCached ? ' <span class="explain-cached">(cached)</span>' : ''}</div>
+          return `<div class="explain-section explain-hero">
+            ${label}${tab.explanationCached ? ' <span class="explain-cached">(cached)</span>' : ''}</div>
             <div class="explain-text">${escapeHtml(tab.explanation)}</div>
           </div>`;
         }
-        return `<div class="explain-section">
-          <button class="explain-btn" id="explain-btn" data-node="${escapeHtml(tab.id)}">✨ Explain with AI</button>
+        return `<div class="explain-section explain-hero">
+          <button class="explain-btn" id="explain-btn" data-node="${escapeHtml(tab.id)}">${ICONS.sparkles} Explain with AI</button>
         </div>`;
       }
 
@@ -296,7 +318,7 @@
           (lang ? ` <span style="color:#a6e3a1">${lang}</span>` : '') +
           (tab.line ? ` <span style="color:#6c7086">L${tab.line}${tab.endLine ? '-L'+tab.endLine : ''}</span>` : '') +
           ` <span style="color:#585b70">(${codeLines.length} lines)</span>`;
-        codeContentEl.innerHTML = `<pre class="hljs">${header}\n${"─".repeat(60)}\n${numberedLines}</pre>` + renderExplainSection(tab);
+        codeContentEl.innerHTML = renderExplainSection(tab) + `<pre class="hljs">${header}\n${"─".repeat(60)}\n${numberedLines}</pre>`;
       }
 
       function activateTab(id) {
@@ -371,6 +393,12 @@
             if (activeTabId === nodeId) {
               renderTabs();
               renderActiveContent();
+            }
+
+            // Kick off the AI explanation immediately — no click required —
+            // so it's one of the first things a visitor sees, not a hidden extra.
+            if (details.snippet && details.type !== "module" && details.type !== "project") {
+              requestExplanation(nodeId);
             }
           })
           .catch(err => {
@@ -552,7 +580,7 @@
             // Fixed screen-size font → shrinks in graph-coords as you zoom in
             const fontSize = 12 / globalScale;
 
-            ctx.font = `${fontSize}px "IBM Plex Sans", sans-serif`;
+            ctx.font = `${fontSize}px "Inter", sans-serif`;
             const tw = ctx.measureText(label).width;
             const pad = fontSize * 0.35;
 
@@ -676,17 +704,23 @@
       /* ── Drawer toggle ── */
       let drawerHeight = 280;
 
+      function setToggleBtnLabel(open) {
+        drawerToggleBtn.innerHTML = open
+          ? `${ICONS.chevronDown} Collapse`
+          : `${ICONS.chevronUp} Open`;
+      }
+
       function setDrawerOpen(open) {
         if (open) {
           codeDrawerEl.classList.remove("collapsed");
           codeDrawerEl.style.height = drawerHeight + "px";
-          drawerToggleBtn.textContent = "▼ Collapse";
         } else {
           codeDrawerEl.classList.add("collapsed");
           codeDrawerEl.style.height = "";
-          drawerToggleBtn.textContent = "▲ Open";
         }
+        setToggleBtnLabel(open);
       }
+      setToggleBtnLabel(false);
 
       drawerToggleBtn.addEventListener("click", () => {
         setDrawerOpen(codeDrawerEl.classList.contains("collapsed"));
@@ -707,7 +741,7 @@
         drawerHeight = Math.max(100, Math.min(newHeight, parentRect.height - 80));
         codeDrawerEl.style.height = drawerHeight + "px";
         codeDrawerEl.classList.remove("collapsed");
-        drawerToggleBtn.textContent = "▼ Collapse";
+        setToggleBtnLabel(true);
       });
       window.addEventListener("mouseup", () => {
         if (isDragging) {

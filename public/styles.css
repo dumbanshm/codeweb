@@ -25,11 +25,18 @@
   box-sizing: border-box;
 }
 
+.icon {
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  vertical-align: -0.15em;
+}
+
 body {
   margin: 0;
   height: 100vh;
   overflow: hidden;
-  font-family: "IBM Plex Sans", "Avenir Next", sans-serif;
+  font-family: "Inter", "Avenir Next", sans-serif;
   color: var(--text);
   background:
     radial-gradient(circle at top left, rgba(142, 202, 230, 0.35), transparent 28%),
@@ -60,9 +67,9 @@ body {
 .panel {
   padding: 16px;
   border: 1px solid var(--panel-border);
-  border-radius: 20px;
+  border-radius: 16px;
   background: var(--panel);
-  box-shadow: 0 16px 32px rgba(18, 35, 52, 0.06);
+  box-shadow: 0 8px 24px rgba(18, 35, 52, 0.05);
 }
 
 .hero {
@@ -109,6 +116,7 @@ h1 {
   text-decoration: none;
   font-size: 0.8rem;
   font-weight: 700;
+  transition: background 0.15s;
 }
 
 .github-btn:hover {
@@ -133,12 +141,20 @@ h2 {
 
 .badge {
   display: inline-flex;
-  padding: 5px 9px;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
   border-radius: 999px;
   background: rgba(36, 87, 197, 0.1);
   color: var(--blue);
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+.badge-ai {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.14), rgba(37, 99, 235, 0.14));
+  color: #6d28d9;
+  box-shadow: inset 0 0 0 1px rgba(124, 58, 237, 0.18);
 }
 
 .form-panel, .controls {
@@ -153,9 +169,10 @@ label {
 
 input, button, select {
   width: 100%;
-  border-radius: 12px;
+  border-radius: 10px;
   border: 1px solid var(--line);
   font: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s, filter 0.15s, transform 0.1s;
 }
 
 input, select {
@@ -165,17 +182,36 @@ input, select {
   font-size: 0.85rem;
 }
 
+input:focus, select:focus {
+  outline: none;
+  border-color: rgba(36, 87, 197, 0.45);
+  box-shadow: 0 0 0 3px rgba(36, 87, 197, 0.12);
+}
+
 input[readonly] {
   background: var(--readonly-bg);
 }
 
 button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 10px 14px;
   background: linear-gradient(135deg, var(--blue), var(--green));
   color: #ffffff;
   font-weight: 700;
   cursor: pointer;
   font-size: 0.85rem;
+  border: none;
+}
+
+button:hover {
+  filter: brightness(1.06);
+}
+
+button:active {
+  transform: scale(0.98);
 }
 
 .button-row {
@@ -330,25 +366,35 @@ button {
   user-select: none;
 }
 
-.code-drawer-handle span {
-  color: #6c7086;
-  font-size: 0.78rem;
-  font-style: italic;
+.code-drawer-handle span.drawer-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #8892b0;
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.code-drawer-handle span.drawer-label .icon {
+  color: #cba6f7;
 }
 
 .code-drawer-handle .toggle-btn {
   background: none;
   border: none;
   color: #a6adc8;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 600;
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: 5px 10px;
+  border-radius: 6px;
   width: auto;
 }
 
 .code-drawer-handle .toggle-btn:hover {
   background: rgba(255,255,255,0.08);
+  filter: none;
 }
 
 .code-drawer-tabs {
@@ -396,16 +442,21 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
-  font-size: 0.7rem;
-  border-radius: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
   color: #6c7086;
   cursor: pointer;
   background: none;
   border: none;
   padding: 0;
   line-height: 1;
+  transition: background 0.12s, color 0.12s;
+}
+
+.code-tab-close .icon {
+  width: 12px;
+  height: 12px;
 }
 
 .code-tab-close:hover {
@@ -446,39 +497,70 @@ button {
   user-select: none;
 }
 
-.explain-section {
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px dashed var(--drawer-border);
+.explain-section.explain-hero {
+  margin-bottom: 18px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  border: 1px solid rgba(203, 166, 247, 0.35);
+  background:
+    linear-gradient(var(--drawer-bg), var(--drawer-bg)) padding-box,
+    linear-gradient(135deg, #7c3aed, #2563eb, #cba6f7) border-box;
+  border: 1px solid transparent;
+  box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.12), 0 8px 24px rgba(124, 58, 237, 0.12);
 }
 
 .explain-btn {
-  padding: 8px 14px;
+  padding: 10px 18px;
   background: linear-gradient(135deg, #7c3aed, #2563eb);
   color: #ffffff;
   font-weight: 700;
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   border: none;
+  border-radius: 8px;
 }
 
 .explain-btn:hover {
-  filter: brightness(1.08);
+  filter: brightness(1.12);
 }
 
 .explain-loading {
-  color: #a6adc8;
-  font-size: 0.85rem;
-  font-style: italic;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #d6d9f0;
+  font-size: 0.88rem;
+}
+
+.explain-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(203, 166, 247, 0.3);
+  border-top-color: #cba6f7;
+  animation: explain-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes explain-spin {
+  to { transform: rotate(360deg); }
+}
+
+.explain-spark {
+  display: inline-block;
+  filter: drop-shadow(0 0 6px rgba(203, 166, 247, 0.7));
 }
 
 .explain-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: #cba6f7;
-  font-size: 0.75rem;
-  font-weight: 700;
+  font-size: 0.78rem;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 8px;
+  letter-spacing: 0.06em;
+  margin-bottom: 10px;
 }
 
 .explain-cached {
@@ -490,15 +572,15 @@ button {
 
 .explain-text {
   color: var(--drawer-text);
-  font-size: 0.88rem;
-  line-height: 1.6;
+  font-size: 0.92rem;
+  line-height: 1.65;
   white-space: pre-wrap;
 }
 
 .explain-error {
   color: #f38ba8;
   font-size: 0.85rem;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .code-drawer-empty {
