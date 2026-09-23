@@ -134,7 +134,6 @@
 
       /* ── State ── */
       let currentGraph = null;
-      let defaultRoot = "";
       let selectedNodeId = null;
       let selectedLinkId = null;
       let highlightedNodeIds = new Set();
@@ -199,6 +198,63 @@
         return map[ext] || null;
       }
 
+      function renderExplainSection(tab) {
+        // Only offer explanations for nodes that actually have source (functions/classes/methods/files).
+        if (!tab.filePath || tab.type === "module" || tab.type === "project") return "";
+
+        if (tab.explaining) {
+          return `<div class="explain-section"><div class="explain-loading">✨ Asking the AI to explain this...</div></div>`;
+        }
+        if (tab.explainError) {
+          return `<div class="explain-section">
+            <div class="explain-error">${escapeHtml(tab.explainError)}</div>
+            <button class="explain-btn" id="explain-btn" data-node="${escapeHtml(tab.id)}">Retry</button>
+          </div>`;
+        }
+        if (tab.explanation) {
+          return `<div class="explain-section">
+            <div class="explain-label">✨ AI Explanation${tab.explanationCached ? ' <span class="explain-cached">(cached)</span>' : ''}</div>
+            <div class="explain-text">${escapeHtml(tab.explanation)}</div>
+          </div>`;
+        }
+        return `<div class="explain-section">
+          <button class="explain-btn" id="explain-btn" data-node="${escapeHtml(tab.id)}">✨ Explain with AI</button>
+        </div>`;
+      }
+
+      function requestExplanation(nodeId) {
+        const tab = openTabs.find(t => t.id === nodeId);
+        if (!tab) return;
+        tab.explaining = true;
+        tab.explainError = null;
+        if (activeTabId === nodeId) renderActiveContent();
+
+        fetch("/api/explain-node", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nodeId })
+        })
+          .then(async (res) => {
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || data.error || `Server returned ${res.status}`);
+            tab.explaining = false;
+            tab.explanation = data.explanation;
+            tab.explanationCached = !!data.cached;
+            if (activeTabId === nodeId) renderActiveContent();
+          })
+          .catch((err) => {
+            tab.explaining = false;
+            tab.explainError = err.message || "Could not generate explanation.";
+            if (activeTabId === nodeId) renderActiveContent();
+          });
+      }
+
+      // Event delegation: the explain button is rebuilt on every render, so wire the click once.
+      codeContentEl.addEventListener("click", (e) => {
+        const btn = e.target.closest("#explain-btn");
+        if (btn) requestExplanation(btn.dataset.node);
+      });
+
       function renderActiveContent() {
         const tab = openTabs.find(t => t.id === activeTabId);
         if (!tab) {
@@ -240,7 +296,7 @@
           (lang ? ` <span style="color:#a6e3a1">${lang}</span>` : '') +
           (tab.line ? ` <span style="color:#6c7086">L${tab.line}${tab.endLine ? '-L'+tab.endLine : ''}</span>` : '') +
           ` <span style="color:#585b70">(${codeLines.length} lines)</span>`;
-        codeContentEl.innerHTML = `<pre class="hljs">${header}\n${"─".repeat(60)}\n${numberedLines}</pre>`;
+        codeContentEl.innerHTML = `<pre class="hljs">${header}\n${"─".repeat(60)}\n${numberedLines}</pre>` + renderExplainSection(tab);
       }
 
       function activateTab(id) {
@@ -304,6 +360,7 @@
             tab.label = details.name || label;
             tab.line = details.snippetStartLine || details.line;
             tab.endLine = details.snippetEndLine || details.endLine;
+            tab.type = details.type;
 
             if (details.snippet) {
               tab.content = details.snippet;
@@ -552,9 +609,7 @@
 
       async function loadHealth() {
         try {
-          const r = await fetch("/api/health");
-          const h = await r.json();
-          defaultRoot = h.defaultRoot || "";
+          await fetch("/api/health");
         } catch { setStatus("Could not connect to server."); }
       }
 
@@ -607,24 +662,6 @@
           openTabs = []; activeTabId = null; renderTabs(); renderActiveContent();
           updateGraphRenderer();
         } catch { setStatus("Could not analyze GitHub repo. Check network or url."); }
-      }
-
-      async function rebuildGraph() {
-        setStatus("Rebuilding graph from sample codebase...");
-        try {
-          const r = await fetch("/api/analyze", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ rootPath: defaultRoot })
-          });
-          const g = await r.json();
-          if (!r.ok) { setStatus(g.message || "Graph rebuild failed."); return; }
-          if (!hasRenderableGraph(g)) { setStatus("Rebuild done but graph empty."); return; }
-          currentGraph = g;
-          setStats(g.summary || {});
-          graphMeta.textContent = `Generated ${new Date(g.generatedAt).toLocaleString()}`;
-          setStatus("Graph rebuilt.");
-          updateGraphRenderer();
-        } catch { setStatus("Could not rebuild graph. Check server and Neo4j connection."); }
       }
 
       /* ── Event listeners ── */

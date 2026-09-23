@@ -7,7 +7,7 @@
     "dev": "node src/server.js",
     "dev:watch": "node --watch-path=src src/server.js",
     "start": "node src/server.js",
-    "check": "node --check src/server.js && node --check src/analyzer.js && node --check src/neo4j.js"
+    "check": "node --check src/server.js && node --check src/analyzer.js && node --check src/neo4j.js && node --check src/llm.js && node --check src/limiter.js"
   },
   "dependencies": {
     "express": "^4.21.2",
